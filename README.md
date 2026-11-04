@@ -15,6 +15,16 @@ The reader is `src/SandMarkDown/bin/Release/net10.0-windows/SandMarkDown.exe`.
 
 It needs the .NET 10 desktop runtime and the Microsoft Edge WebView2 Runtime. Both are already present on a current Windows 11 development machine.
 
+## Install for double-click
+
+From the repo:
+
+```powershell
+.\deploy\Install-SandMarkDown.cmd
+```
+
+That publishes the current Release build to `%LOCALAPPDATA%\Sandmark Technologies\SandMarkDown\Current` and associates `.md` and `.markdown` with it for the current user. No admin rights. Run it again after you change the reader. `.\deploy\Install-SandMarkDown.cmd -Uninstall` removes that copy.
+
 ## Read a file
 
 File, Open loads a Markdown file. File, Close returns to the welcome page. File, Exit quits.
