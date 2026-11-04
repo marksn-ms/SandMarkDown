@@ -38,7 +38,12 @@ public static partial class MarkdownHtmlRenderer
         .UseYamlFrontMatter()
         .Build();
 
-    private static readonly string TokensCss = LoadTokens();
+    internal static readonly string TokensCss = LoadTokens();
+
+    /// <summary>
+    /// Converts trusted Markdown, written by the app itself, to an HTML fragment.
+    /// </summary>
+    internal static string ToHtmlFragment(string markdown) => Markdown.ToHtml(markdown, Pipeline);
 
     private static readonly HtmlFormatter CodeFormatter = new(StyleDictionary.DefaultDark);
 
@@ -649,6 +654,28 @@ public static partial class MarkdownHtmlRenderer
             top: var(--smt-space-5);
           }
         }
+        @media print {
+          :root[data-theme="dark"] {
+            --smt-page: #ffffff;
+            --smt-ink: #111111;
+            --smt-muted: #444444;
+            --smt-surface: #f4f5f7;
+            --smt-line: #c9ced6;
+            --smt-accent: #1f5678;
+            --smt-accent-ink: #163e58;
+            color-scheme: light;
+          }
+          .smt-outline, .smt-find, .smt-remote, .smt-prose img[data-smt-remote-src] { display: none !important; }
+          body:has(.smt-find:not([hidden])) .smt-main,
+          .smt-main { display: block; width: auto; padding: 0; }
+          .smt-prose pre span { color: inherit !important; }
+          .smt-prose pre, .smt-prose blockquote, .smt-prose table, .smt-prose img { break-inside: avoid; }
+          .smt-prose h1, .smt-prose h2, .smt-prose h3 { break-after: avoid; }
+          .smt-prose a[href^="http"]::after { content: " (" attr(href) ")"; color: var(--smt-muted); font-size: 0.85em; }
+        }
+        @media (forced-colors: active) {
+          .smt-remote, .smt-find, .smt-prose pre, .smt-prose :not(pre) > code { border: 1px solid CanvasText; }
+        }
         </style>
         </head>
         <body>
@@ -832,6 +859,9 @@ public static partial class MarkdownHtmlRenderer
             } else if (key === "o" || key === "O") {
               e.preventDefault();
               post({ type: "open" });
+            } else if (key === "p" || key === "P") {
+              e.preventDefault();
+              post({ type: "print" });
             } else if (key === "w" || key === "W") {
               e.preventDefault();
               post({ type: "close" });

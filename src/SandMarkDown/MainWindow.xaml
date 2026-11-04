@@ -21,6 +21,8 @@
                 <MenuItem Header="_Open..." Click="OnOpenClick" InputGestureText="Ctrl+O"/>
                 <MenuItem x:Name="CloseMenuItem" Header="_Close" Click="OnCloseClick" InputGestureText="Ctrl+W" IsEnabled="False"/>
                 <Separator/>
+                <MenuItem Header="_Print..." Click="OnPrintClick" InputGestureText="Ctrl+P"/>
+                <Separator/>
                 <MenuItem Header="E_xit" Click="OnExitClick" InputGestureText="Alt+F4"/>
             </MenuItem>
             <MenuItem Header="_View">
@@ -47,15 +49,22 @@
                 <TextBlock x:Name="ZoomText"
                            DockPanel.Dock="Right"
                            Text="100%"
+                           AutomationProperties.Name="Zoom level"
+                           AutomationProperties.LiveSetting="Polite"
                            Foreground="{DynamicResource SmtMuted}"
                            Margin="16,0,0,0"/>
                 <TextBlock x:Name="StatusText"
                            Foreground="{DynamicResource SmtInk}"
                            TextTrimming="CharacterEllipsis"
+                           ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"
+                           AutomationProperties.Name="Status"
+                           AutomationProperties.LiveSetting="Polite"
                            Text="Ready"/>
             </DockPanel>
         </Border>
 
-        <wv2:WebView2 x:Name="Viewer" />
+        <wv2:WebView2 x:Name="Viewer"
+                      DefaultBackgroundColor="#101418"
+                      AutomationProperties.Name="Document" />
     </DockPanel>
 </Window>
