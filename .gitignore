@@ -1,0 +1,10 @@
+bin/
+obj/
+.vs/
+.idea/
+.cursor/
+*.user
+*.suo
+TestResults/
+AGENTS.md
+*.nupkg

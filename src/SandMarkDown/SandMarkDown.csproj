@@ -1,0 +1,35 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <ApplicationIcon>Assets\favicon.ico</ApplicationIcon>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <Product>SandMarkDown</Product>
+    <Company>Sandmark Technologies</Company>
+    <Authors>Sandmark Technologies</Authors>
+    <Copyright>Copyright © 2026 Sandmark Technologies</Copyright>
+    <Description>Local Markdown reader.</Description>
+    <Version>1.0.0</Version>
+    <!-- ThemeMode is the supported way to get a dark window chrome. The SDK still marks it experimental. -->
+    <NoWarn>$(NoWarn);WPF0001</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\favicon.ico" />
+    <Resource Include="Assets\logo-icon.jpg" />
+    <Resource Include="Assets\logo-small-narrow.jpg" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SandMarkDown.Core\SandMarkDown.Core.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SandMarkDown.Core/SandMarkDown.Core.csproj" />
+    <Project Path="src/SandMarkDown/SandMarkDown.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SandMarkDown.Core.Tests/SandMarkDown.Core.Tests.csproj" />
+  </Folder>
+</Solution>

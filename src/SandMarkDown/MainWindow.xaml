@@ -1,0 +1,56 @@
+﻿<Window x:Class="SandMarkDown.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        Title="SandMarkDown"
+        Height="860"
+        Width="1100"
+        MinHeight="480"
+        MinWidth="720"
+        Background="{DynamicResource SmtPage}"
+        WindowStartupLocation="CenterScreen"
+        Icon="pack://application:,,,/Assets/favicon.ico"
+        AllowDrop="True"
+        Loaded="OnLoaded"
+        PreviewKeyDown="OnPreviewKeyDown"
+        DragOver="OnDragOver"
+        Drop="OnDrop">
+    <DockPanel>
+        <Menu DockPanel.Dock="Top" Padding="4,2">
+            <MenuItem Header="_File">
+                <MenuItem Header="_Open..." Click="OnOpenClick" InputGestureText="Ctrl+O"/>
+                <MenuItem x:Name="CloseMenuItem" Header="_Close" Click="OnCloseClick" InputGestureText="Ctrl+W" IsEnabled="False"/>
+                <Separator/>
+                <MenuItem Header="E_xit" Click="OnExitClick" InputGestureText="Alt+F4"/>
+            </MenuItem>
+            <MenuItem Header="_View">
+                <MenuItem Header="Zoom _In" Click="OnZoomInClick" InputGestureText="Ctrl++"/>
+                <MenuItem Header="Zoom _Out" Click="OnZoomOutClick" InputGestureText="Ctrl+-"/>
+                <MenuItem Header="_Actual Size" Click="OnZoomResetClick" InputGestureText="Ctrl+0"/>
+            </MenuItem>
+            <MenuItem Header="_Help">
+                <MenuItem Header="_About SandMarkDown..." Click="OnAboutClick"/>
+            </MenuItem>
+        </Menu>
+
+        <Border DockPanel.Dock="Bottom"
+                Background="{DynamicResource SmtSurface}"
+                BorderBrush="{DynamicResource SmtLine}"
+                BorderThickness="0,1,0,0"
+                Padding="12,6">
+            <DockPanel>
+                <TextBlock x:Name="ZoomText"
+                           DockPanel.Dock="Right"
+                           Text="100%"
+                           Foreground="{DynamicResource SmtMuted}"
+                           Margin="16,0,0,0"/>
+                <TextBlock x:Name="StatusText"
+                           Foreground="{DynamicResource SmtInk}"
+                           TextTrimming="CharacterEllipsis"
+                           Text="Ready"/>
+            </DockPanel>
+        </Border>
+
+        <wv2:WebView2 x:Name="Viewer" />
+    </DockPanel>
+</Window>

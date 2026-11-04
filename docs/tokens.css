@@ -1,0 +1,247 @@
+/* SandmarkTech tokens. Reference file. Not published.
+   Copy into a project marked Style: sandmark or Style: sandmark-app.
+   Light is the default. Set <html data-theme="dark"> when the project says Theme: dark. */
+
+:root {
+    --smt-page: #f6f5f2;
+    --smt-ink: #1c2430;
+    --smt-muted: #5c6774;
+    --smt-surface: #ffffff;
+    --smt-line: #d9dde3;
+    --smt-accent: #1f5678;
+    --smt-accent-ink: #163e58;
+    --smt-on-accent: #ffffff;
+    --smt-danger: #9b2c2c;
+    --smt-focus: #1f5678;
+
+    --smt-font: "Segoe UI", system-ui, sans-serif;
+    --smt-mono: "Cascadia Mono", ui-monospace, Consolas, monospace;
+
+    --smt-space-1: 0.25rem;
+    --smt-space-2: 0.5rem;
+    --smt-space-3: 0.75rem;
+    --smt-space-4: 1rem;
+    --smt-space-5: 1.5rem;
+    --smt-space-6: 2rem;
+    --smt-space-7: 3rem;
+    --smt-space-8: 4rem;
+
+    --smt-radius: 0.375rem;
+    --smt-measure: 65ch;
+    --smt-page-pad: var(--smt-space-5);
+    --smt-header-h: 4rem;
+
+    color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+    --smt-page: #101418;
+    --smt-ink: #e7eef3;
+    --smt-muted: #9aa6b2;
+    --smt-surface: #1a2129;
+    --smt-line: #2c3642;
+    --smt-accent: #8ec0e0;
+    --smt-accent-ink: #8ec0e0;
+    --smt-on-accent: #101418;
+    --smt-danger: #f0a8a8;
+    --smt-focus: #8ec0e0;
+
+    color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: var(--smt-font);
+    font-size: 1rem;
+    line-height: 1.5;
+    color: var(--smt-ink);
+    background: var(--smt-page);
+}
+
+:focus-visible {
+    outline: 2px solid var(--smt-focus);
+    outline-offset: 2px;
+}
+
+a {
+    color: var(--smt-accent-ink);
+    text-underline-offset: 0.15em;
+}
+
+a:hover {
+    color: var(--smt-accent);
+}
+
+code,
+pre,
+.smt-mono {
+    font-family: var(--smt-mono);
+}
+
+.smt-wrap {
+    width: min(100% - (2 * var(--smt-page-pad)), 72rem);
+    margin-inline: auto;
+}
+
+.smt-prose {
+    max-width: var(--smt-measure);
+}
+
+.smt-header,
+.smt-footer {
+    background: var(--smt-surface);
+    border-color: var(--smt-line);
+    border-style: solid;
+}
+
+.smt-header {
+    border-width: 0 0 1px;
+    min-height: var(--smt-header-h);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--smt-space-4);
+    padding: var(--smt-space-3) var(--smt-page-pad);
+}
+
+.smt-header img {
+    display: block;
+    height: 2.5rem;
+    width: auto;
+}
+
+.smt-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--smt-space-2) var(--smt-space-4);
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    font-weight: 600;
+}
+
+.smt-nav a {
+    color: var(--smt-muted);
+    text-decoration: none;
+}
+
+.smt-nav a[aria-current="page"] {
+    color: var(--smt-ink);
+}
+
+.smt-main {
+    padding: var(--smt-space-6) var(--smt-page-pad) var(--smt-space-8);
+}
+
+.smt-app .smt-main {
+    padding: var(--smt-space-4);
+}
+
+.smt-footer {
+    border-width: 1px 0 0;
+    padding: var(--smt-space-5) var(--smt-page-pad);
+    color: var(--smt-muted);
+    font-size: 0.875rem;
+}
+
+.smt-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--smt-space-2);
+    min-height: 2.5rem;
+    padding: 0 var(--smt-space-4);
+    border: 1px solid transparent;
+    border-radius: var(--smt-radius);
+    background: var(--smt-accent);
+    color: var(--smt-on-accent);
+    font: 600 0.9375rem var(--smt-font);
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.smt-btn:hover {
+    background: var(--smt-accent-ink);
+    color: var(--smt-on-accent);
+}
+
+.smt-btn.secondary {
+    background: transparent;
+    color: var(--smt-accent-ink);
+    border-color: var(--smt-line);
+}
+
+.smt-card {
+    background: var(--smt-surface);
+    border: 1px solid var(--smt-line);
+    border-radius: var(--smt-radius);
+    padding: var(--smt-space-5);
+}
+
+.smt-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-variant-numeric: tabular-nums;
+}
+
+.smt-table th,
+.smt-table td {
+    padding: var(--smt-space-2) var(--smt-space-3);
+    border-bottom: 1px solid var(--smt-line);
+    text-align: left;
+}
+
+.smt-table th {
+    font-size: 0.75rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--smt-muted);
+}
+
+.smt-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--smt-space-1);
+    font-weight: 600;
+}
+
+.smt-field input,
+.smt-field textarea,
+.smt-field select {
+    font: 400 1rem var(--smt-font);
+    color: var(--smt-ink);
+    background: var(--smt-surface);
+    border: 1px solid var(--smt-line);
+    border-radius: var(--smt-radius);
+    padding: var(--smt-space-2) var(--smt-space-3);
+    min-height: 2.5rem;
+}
+
+.smt-status {
+    margin: 0;
+    color: var(--smt-muted);
+}
+
+.smt-status.error {
+    color: var(--smt-danger);
+}
+
+h1, h2, h3 {
+    line-height: 1.2;
+    font-weight: 650;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        transition: none !important;
+        animation: none !important;
+    }
+}
