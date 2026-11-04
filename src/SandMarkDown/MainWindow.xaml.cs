@@ -30,7 +30,6 @@ public partial class MainWindow : Window
     private string _contentSecurityPolicy = string.Empty;
     private double _zoom = ZoomMath.Actual;
     private bool _webReady;
-    private bool _previewLoaded;
     private long _lastTravelMs;
 
     /// <summary>
@@ -170,39 +169,10 @@ public partial class MainWindow : Window
         }
 
         _pending = null;
-        // A new query value forces WebView2 to load the page. Later loads replace the
-        // current history entry so the mouse back button does not walk WebView2's list.
-        // File history belongs to ReadingHistory.
-        var url = $"{MarkdownHtmlRenderer.PreviewUrl}?d={DateTime.UtcNow.Ticks}";
-        if (!_previewLoaded)
-        {
-            _previewLoaded = true;
-            Viewer.CoreWebView2.Navigate(url);
-        }
-        else
-        {
-            _ = ReplacePreviewAsync(url);
-        }
-
+        // A new query value forces WebView2 to load the page. WebView2's own back and forward
+        // are cancelled in OnNavigationStarting, because file history belongs to ReadingHistory.
+        Viewer.CoreWebView2.Navigate($"{MarkdownHtmlRenderer.PreviewUrl}?d={DateTime.UtcNow.Ticks}");
         Viewer.Focus();
-    }
-
-    private async Task ReplacePreviewAsync(string url)
-    {
-        var core = Viewer.CoreWebView2;
-        if (core is null)
-        {
-            return;
-        }
-
-        try
-        {
-            await core.ExecuteScriptAsync($"location.replace({JsonSerializer.Serialize(url)})");
-        }
-        catch (InvalidOperationException)
-        {
-            // The viewer closed while the page was loading.
-        }
     }
 
     private void OnWebResourceRequested(object? sender, CoreWebView2WebResourceRequestedEventArgs e)
