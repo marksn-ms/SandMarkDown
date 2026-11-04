@@ -38,6 +38,11 @@
             <Setter Property="Foreground" Value="{StaticResource SmtInk}"/>
             <Setter Property="Background" Value="{StaticResource SmtSurface}"/>
             <Setter Property="FontFamily" Value="{StaticResource SmtFont}"/>
+            <Style.Triggers>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Foreground" Value="{StaticResource SmtMuted}"/>
+                </Trigger>
+            </Style.Triggers>
         </Style>
 
         <Style x:Key="ToolbarButtonStyle" TargetType="Button">

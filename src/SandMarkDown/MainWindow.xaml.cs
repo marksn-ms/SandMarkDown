@@ -10,17 +10,26 @@ using SandMarkDown.Core;
 namespace SandMarkDown;
 
 /// <summary>
-/// Reads one Markdown file at a time. There is no editor.
+/// Reads Markdown files. There is no editor. Back and forward revisit files opened in this window.
 /// </summary>
 public partial class MainWindow : Window
 {
+    private static readonly string ZoomSettingsPath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "Sandmark Technologies",
+        "SandMarkDown",
+        "zoom.json");
+
     private readonly Dictionary<string, string> _resources = new(StringComparer.Ordinal);
+    private readonly ReadingHistory _history = new();
     private RenderedDocument? _pending;
     private string? _documentPath;
     private string? _pendingFragment;
     private string _html = string.Empty;
     private double _zoom = ZoomMath.Actual;
     private bool _webReady;
+    private bool _previewLoaded;
+    private long _lastTravelMs;
 
     /// <summary>
     /// Initializes the reader window.
@@ -29,6 +38,8 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         Title = Branding.ProductName + Branding.ProductTitleSuffix;
+        _zoom = ZoomPreferences.Load(ZoomSettingsPath);
+        ZoomText.Text = ZoomMath.FormatPercent(_zoom);
     }
 
     /// <summary>
@@ -37,10 +48,10 @@ public partial class MainWindow : Window
     /// <param name="path">Markdown file to open.</param>
     public void OpenPath(string path)
     {
-        OpenDocument(path, fragment: null);
+        OpenDocument(path, fragment: null, recordHistory: true);
     }
 
-    private void OpenDocument(string path, string? fragment)
+    private bool OpenDocument(string path, string? fragment, bool recordHistory)
     {
         try
         {
@@ -48,7 +59,7 @@ public partial class MainWindow : Window
             if (!File.Exists(fullPath))
             {
                 ShowError($"File not found:\n{fullPath}");
-                return;
+                return false;
             }
 
             var markdown = File.ReadAllText(fullPath);
@@ -59,10 +70,18 @@ public partial class MainWindow : Window
             StatusText.Text = fullPath;
             Title = $"{Path.GetFileName(fullPath)} - {Branding.ProductName}{Branding.ProductTitleSuffix}";
             ShowRendered(rendered);
+            if (recordHistory)
+            {
+                _history.Record(fullPath, fragment);
+                UpdateHistoryMenu();
+            }
+
+            return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             ShowError(ex.Message);
+            return false;
         }
     }
 
@@ -145,9 +164,39 @@ public partial class MainWindow : Window
         }
 
         _pending = null;
-        // The preview URL never changes. A query value forces WebView2 to load the new page.
-        Viewer.CoreWebView2.Navigate($"{MarkdownHtmlRenderer.PreviewUrl}?d={DateTime.UtcNow.Ticks}");
+        // A new query value forces WebView2 to load the page. Later loads replace the
+        // current history entry so the mouse back button does not walk WebView2's list.
+        // File history belongs to ReadingHistory.
+        var url = $"{MarkdownHtmlRenderer.PreviewUrl}?d={DateTime.UtcNow.Ticks}";
+        if (!_previewLoaded)
+        {
+            _previewLoaded = true;
+            Viewer.CoreWebView2.Navigate(url);
+        }
+        else
+        {
+            _ = ReplacePreviewAsync(url);
+        }
+
         Viewer.Focus();
+    }
+
+    private async Task ReplacePreviewAsync(string url)
+    {
+        var core = Viewer.CoreWebView2;
+        if (core is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await core.ExecuteScriptAsync($"location.replace({JsonSerializer.Serialize(url)})");
+        }
+        catch (InvalidOperationException)
+        {
+            // The viewer closed while the page was loading.
+        }
     }
 
     private void OnWebResourceRequested(object? sender, CoreWebView2WebResourceRequestedEventArgs e)
@@ -207,6 +256,11 @@ public partial class MainWindow : Window
         {
             if (uri.AbsolutePath.Equals("/preview", StringComparison.OrdinalIgnoreCase))
             {
+                if (e.NavigationKind == CoreWebView2NavigationKind.BackOrForward)
+                {
+                    e.Cancel = true;
+                }
+
                 return;
             }
 
@@ -276,6 +330,12 @@ public partial class MainWindow : Window
                 case "close":
                     CloseDocument();
                     break;
+                case "back":
+                    GoBack();
+                    break;
+                case "forward":
+                    GoForward();
+                    break;
             }
         }
         catch (JsonException)
@@ -297,7 +357,7 @@ public partial class MainWindow : Window
     {
         if (MarkdownPaths.IsMarkdownFile(path))
         {
-            OpenDocument(path, string.IsNullOrEmpty(fragment) ? null : fragment);
+            OpenDocument(path, string.IsNullOrEmpty(fragment) ? null : fragment, recordHistory: true);
             return;
         }
 
@@ -306,12 +366,116 @@ public partial class MainWindow : Window
 
     private void CloseDocument()
     {
+        if (_documentPath is null)
+        {
+            return;
+        }
+
+        ShowWelcome();
+        _history.Record(null, null);
+        UpdateHistoryMenu();
+    }
+
+    private void ShowWelcome()
+    {
         _documentPath = null;
         _pendingFragment = null;
         CloseMenuItem.IsEnabled = false;
         StatusText.Text = "No file open";
         Title = Branding.ProductName + Branding.ProductTitleSuffix;
         ShowRendered(MarkdownHtmlRenderer.Welcome());
+    }
+
+    private void GoBack()
+    {
+        if (!TravelAllowed())
+        {
+            return;
+        }
+
+        var place = _history.GoBack();
+        if (place is null)
+        {
+            return;
+        }
+
+        if (!ShowPlace(place.Value))
+        {
+            _history.GoForward();
+        }
+
+        UpdateHistoryMenu();
+    }
+
+    private void GoForward()
+    {
+        if (!TravelAllowed())
+        {
+            return;
+        }
+
+        var place = _history.GoForward();
+        if (place is null)
+        {
+            return;
+        }
+
+        if (!ShowPlace(place.Value))
+        {
+            _history.GoBack();
+        }
+
+        UpdateHistoryMenu();
+    }
+
+    private bool ShowPlace(HistoryPlace place)
+    {
+        if (place.Path is null)
+        {
+            ShowWelcome();
+            return true;
+        }
+
+        return OpenDocument(place.Path, place.Fragment, recordHistory: false);
+    }
+
+    private bool TravelAllowed()
+    {
+        var now = Environment.TickCount64;
+        if (now - _lastTravelMs < 200)
+        {
+            return false;
+        }
+
+        _lastTravelMs = now;
+        return true;
+    }
+
+    private void UpdateHistoryMenu()
+    {
+        BackMenuItem.IsEnabled = _history.CanGoBack;
+        ForwardMenuItem.IsEnabled = _history.CanGoForward;
+    }
+
+    private void OpenFind()
+    {
+        if (!_webReady || Viewer.CoreWebView2 is null)
+        {
+            return;
+        }
+
+        _ = Viewer.CoreWebView2.ExecuteScriptAsync("window.smtFind && window.smtFind.open()");
+    }
+
+    private void StepFind(bool backward)
+    {
+        if (!_webReady || Viewer.CoreWebView2 is null)
+        {
+            return;
+        }
+
+        var call = backward ? "window.smtFind.previous()" : "window.smtFind.next()";
+        _ = Viewer.CoreWebView2.ExecuteScriptAsync($"window.smtFind && {call}");
     }
 
     private void ShowOpenDialog()
@@ -336,6 +500,14 @@ public partial class MainWindow : Window
         }
 
         ZoomText.Text = ZoomMath.FormatPercent(factor);
+        try
+        {
+            ZoomPreferences.Save(ZoomSettingsPath, factor);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // The page is already zoomed. Remembering it can wait for the next change.
+        }
     }
 
     private static void OpenExternal(string pathOrUrl)
@@ -376,6 +548,12 @@ public partial class MainWindow : Window
 
     private void OnExitClick(object sender, RoutedEventArgs e) => Application.Current.Shutdown();
 
+    private void OnBackClick(object sender, RoutedEventArgs e) => GoBack();
+
+    private void OnForwardClick(object sender, RoutedEventArgs e) => GoForward();
+
+    private void OnFindClick(object sender, RoutedEventArgs e) => OpenFind();
+
     private void OnZoomInClick(object sender, RoutedEventArgs e) => SetZoom(ZoomMath.ZoomIn(_zoom));
 
     private void OnZoomOutClick(object sender, RoutedEventArgs e) => SetZoom(ZoomMath.ZoomOut(_zoom));
@@ -390,13 +568,46 @@ public partial class MainWindow : Window
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (Viewer.IsKeyboardFocusWithin || Keyboard.Modifiers != ModifierKeys.Control)
+        if (Viewer.IsKeyboardFocusWithin)
+        {
+            return;
+        }
+
+        if (Keyboard.Modifiers == ModifierKeys.Alt)
+        {
+            var key = e.Key == Key.System ? e.SystemKey : e.Key;
+            if (key == Key.Left)
+            {
+                GoBack();
+                e.Handled = true;
+            }
+            else if (key == Key.Right)
+            {
+                GoForward();
+                e.Handled = true;
+            }
+
+            return;
+        }
+
+        if (e.Key == Key.F3 && Keyboard.Modifiers is ModifierKeys.None or ModifierKeys.Shift)
+        {
+            StepFind(backward: Keyboard.Modifiers == ModifierKeys.Shift);
+            e.Handled = true;
+            return;
+        }
+
+        if (Keyboard.Modifiers != ModifierKeys.Control)
         {
             return;
         }
 
         switch (e.Key)
         {
+            case Key.F:
+                OpenFind();
+                e.Handled = true;
+                break;
             case Key.O:
                 ShowOpenDialog();
                 e.Handled = true;

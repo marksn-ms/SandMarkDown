@@ -36,7 +36,7 @@ public class MarkdownHtmlRendererTests
         Assert.Contains("Hello", rendered.Html, StringComparison.Ordinal);
         Assert.Contains("<strong>bold</strong>", rendered.Html, StringComparison.Ordinal);
         Assert.Contains("type=\"checkbox\"", rendered.Html, StringComparison.Ordinal);
-        Assert.Contains("<table>", rendered.Html, StringComparison.Ordinal);
+        Assert.Contains("<div class=\"smt-table-scroll\"><table>", rendered.Html, StringComparison.Ordinal);
         Assert.Contains("<pre>", rendered.Html, StringComparison.Ordinal);
         Assert.Contains("data-theme=\"dark\"", rendered.Html, StringComparison.Ordinal);
         Assert.Contains("--smt-page: #101418", rendered.Html, StringComparison.Ordinal);
@@ -131,6 +131,51 @@ public class MarkdownHtmlRendererTests
         Assert.Contains(Branding.ProductName, welcome.Html, StringComparison.Ordinal);
         Assert.Contains("data-theme=\"dark\"", welcome.Html, StringComparison.Ordinal);
         Assert.Contains("chrome.webview.postMessage", welcome.Html, StringComparison.Ordinal);
+        Assert.Contains("id=\"smt-find\"", welcome.Html, StringComparison.Ordinal);
+        Assert.DoesNotContain("On this page", welcome.Html, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Two headings become an outline. A heading shown inside a code fence does not.
+    /// </summary>
+    [Fact]
+    public void Render_lists_real_headings_in_the_outline()
+    {
+        var markdown = """
+            # Alpha
+
+            ```html
+            <h2 id="fake">Fake</h2>
+            ```
+
+            ## Beta
+            """;
+
+        var rendered = MarkdownHtmlRenderer.Render(markdown, SamplePath());
+
+        Assert.Contains("aria-label=\"On this page\"", rendered.Html, StringComparison.Ordinal);
+        Assert.Contains("href=\"#alpha\"", rendered.Html, StringComparison.Ordinal);
+        Assert.Contains("href=\"#beta\"", rendered.Html, StringComparison.Ordinal);
+        Assert.DoesNotContain("href=\"#fake\"", rendered.Html, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A known fenced language is colored, and the source text remains.
+    /// </summary>
+    [Fact]
+    public void Render_colors_fenced_csharp()
+    {
+        var markdown = """
+            ```csharp
+            public class A { }
+            ```
+            """;
+
+        var rendered = MarkdownHtmlRenderer.Render(markdown, SamplePath());
+
+        Assert.Contains("language-csharp", rendered.Html, StringComparison.Ordinal);
+        Assert.Contains("public", rendered.Html, StringComparison.Ordinal);
+        Assert.Contains("color:", rendered.Html, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

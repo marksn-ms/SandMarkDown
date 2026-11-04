@@ -24,6 +24,11 @@
                 <MenuItem Header="E_xit" Click="OnExitClick" InputGestureText="Alt+F4"/>
             </MenuItem>
             <MenuItem Header="_View">
+                <MenuItem x:Name="BackMenuItem" Header="_Back" Click="OnBackClick" InputGestureText="Alt+Left" IsEnabled="False"/>
+                <MenuItem x:Name="ForwardMenuItem" Header="For_ward" Click="OnForwardClick" InputGestureText="Alt+Right" IsEnabled="False"/>
+                <Separator/>
+                <MenuItem Header="_Find..." Click="OnFindClick" InputGestureText="Ctrl+F"/>
+                <Separator/>
                 <MenuItem Header="Zoom _In" Click="OnZoomInClick" InputGestureText="Ctrl++"/>
                 <MenuItem Header="Zoom _Out" Click="OnZoomOutClick" InputGestureText="Ctrl+-"/>
                 <MenuItem Header="_Actual Size" Click="OnZoomResetClick" InputGestureText="Ctrl+0"/>

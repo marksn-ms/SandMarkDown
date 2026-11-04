@@ -25,7 +25,8 @@ You can also drop a `.md` or `.markdown` file on the window, or pass a path on t
 SandMarkDown.exe "C:\notes\readme.md"
 ```
 
-The status bar shows the open file path. Ctrl+mouse wheel, Ctrl+Plus, and Ctrl+Minus change the reading size. Ctrl+0 returns to actual size. The same commands are under View. Links to other Markdown files open in this window. Web links open in the browser.
+The status bar shows the open file path. Ctrl+F finds text on the page. F3 moves to the next match. Alt+Left and Alt+Right move through files opened in this window, including a file you closed. Ctrl+mouse wheel, Ctrl+Plus, and Ctrl+Minus change the reading size. Ctrl+0 returns to actual size. The same commands are under View. The reading size is remembered. Links to other Markdown files open in this window. Web links open in the browser.
 
-Double-click a `.md` file to open it when SandMarkDown is the default app for Markdown files.
-"# SandMarkDown" 
+When a file has more than one heading, those headings stay beside the page so you can jump.
+
+Double-click a `.md` file to open it when SandMarkDown is the default app for Markdown files. 
