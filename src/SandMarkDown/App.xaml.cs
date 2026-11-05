@@ -88,6 +88,10 @@ public partial class App : Application
         base.OnStartup(e);
         ApplyTheme(ViewSettings.Load(ViewSettingsPath).DarkMode);
 
+        var jumpList = new System.Windows.Shell.JumpList { ShowRecentCategory = true };
+        System.Windows.Shell.JumpList.SetJumpList(this, jumpList);
+        jumpList.Apply();
+
         var window = new MainWindow();
         MainWindow = window;
         window.Show();

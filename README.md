@@ -35,7 +35,9 @@ That publishes a self-contained build and packs `artifacts\msix\SandMarkDown_<ve
 
 ## Read a file
 
-File, Open loads a Markdown file. File, Close returns to the welcome page. File, Exit quits.
+File, Open loads a Markdown file. File, Open Recent lists the last ten files, which also appear when you right-click SandMarkDown on the taskbar. File, Open Folder shows a folder in the Explorer. File, Close returns to the welcome page. File, Exit quits.
+
+View, Explorer (Ctrl+Shift+E) shows a folder tree on the left with its subfolders and Markdown files. Click a file to read it. Without Open Folder, the Explorer follows the folder of the open file. You can also drop a folder on the window.
 
 You can also drop a `.md` or `.markdown` file on the window, or pass a path on the command line:
 

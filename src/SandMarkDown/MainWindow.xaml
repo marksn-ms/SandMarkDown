@@ -19,6 +19,8 @@
         <Menu DockPanel.Dock="Top" Padding="4,2">
             <MenuItem Header="_File">
                 <MenuItem Header="_Open..." Click="OnOpenClick" InputGestureText="Ctrl+O"/>
+                <MenuItem Header="Open _Folder..." Click="OnOpenFolderClick"/>
+                <MenuItem x:Name="RecentMenuItem" Header="Open _Recent"/>
                 <MenuItem x:Name="CloseMenuItem" Header="_Close" Click="OnCloseClick" InputGestureText="Ctrl+W" IsEnabled="False"/>
                 <Separator/>
                 <MenuItem Header="_Print..." Click="OnPrintClick" InputGestureText="Ctrl+P"/>
@@ -31,6 +33,7 @@
                 <Separator/>
                 <MenuItem Header="_Find..." Click="OnFindClick" InputGestureText="Ctrl+F"/>
                 <Separator/>
+                <MenuItem x:Name="ExplorerMenuItem" Header="_Explorer" IsCheckable="True" Click="OnViewOptionClick" InputGestureText="Ctrl+Shift+E"/>
                 <MenuItem x:Name="PreviewMenuItem" Header="_Preview" IsCheckable="True" Click="OnViewOptionClick"/>
                 <MenuItem x:Name="SidebarMenuItem" Header="_Sidebar" IsCheckable="True" Click="OnViewOptionClick"/>
                 <MenuItem x:Name="DarkModeMenuItem" Header="_Dark mode" IsCheckable="True" Click="OnViewOptionClick"/>
@@ -67,7 +70,74 @@
             </DockPanel>
         </Border>
 
-        <wv2:WebView2 x:Name="Viewer"
-                      AutomationProperties.Name="Document" />
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="ExplorerColumn" Width="0"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <Border x:Name="ExplorerPanel"
+                    Grid.Column="0"
+                    Visibility="Collapsed"
+                    Background="{DynamicResource SmtSurface}"
+                    BorderBrush="{DynamicResource SmtLine}"
+                    BorderThickness="0,0,1,0">
+                <DockPanel>
+                    <DockPanel DockPanel.Dock="Top" Margin="12,8,6,2">
+                        <Button DockPanel.Dock="Right"
+                                Style="{StaticResource IconButtonStyle}"
+                                Content="&#xE72C;"
+                                ToolTip="Refresh"
+                                AutomationProperties.Name="Refresh Explorer"
+                                Click="OnExplorerRefreshClick"/>
+                        <Button DockPanel.Dock="Right"
+                                Style="{StaticResource IconButtonStyle}"
+                                Content="&#xE8DA;"
+                                ToolTip="Open folder"
+                                AutomationProperties.Name="Open folder"
+                                Click="OnOpenFolderClick"/>
+                        <TextBlock Text="EXPLORER"
+                                   VerticalAlignment="Center"
+                                   FontSize="11"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource SmtMuted}"/>
+                    </DockPanel>
+                    <TextBlock x:Name="ExplorerFolderText"
+                               DockPanel.Dock="Top"
+                               Margin="12,2,8,6"
+                               FontWeight="SemiBold"
+                               TextTrimming="CharacterEllipsis"
+                               Foreground="{DynamicResource SmtInk}"/>
+                    <TextBlock x:Name="ExplorerEmptyText"
+                               DockPanel.Dock="Top"
+                               Margin="12,4,12,0"
+                               TextWrapping="Wrap"
+                               Foreground="{DynamicResource SmtMuted}"
+                               Text="Open a file or a folder to browse its Markdown files."/>
+                    <TreeView x:Name="ExplorerTree"
+                              Background="Transparent"
+                              BorderThickness="0"
+                              Foreground="{DynamicResource SmtInk}"
+                              AutomationProperties.Name="Markdown files"
+                              PreviewMouseLeftButtonUp="OnExplorerClick"
+                              KeyDown="OnExplorerKeyDown"/>
+                </DockPanel>
+            </Border>
+
+            <GridSplitter x:Name="ExplorerSplitter"
+                          Grid.Column="1"
+                          Width="4"
+                          Visibility="Collapsed"
+                          HorizontalAlignment="Stretch"
+                          Background="Transparent"
+                          ResizeDirection="Columns"
+                          ResizeBehavior="PreviousAndNext"
+                          DragCompleted="OnExplorerResized"/>
+
+            <wv2:WebView2 x:Name="Viewer"
+                          Grid.Column="2"
+                          AutomationProperties.Name="Document" />
+        </Grid>
     </DockPanel>
 </Window>

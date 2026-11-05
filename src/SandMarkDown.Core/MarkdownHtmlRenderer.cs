@@ -1064,6 +1064,11 @@ public static partial class MarkdownHtmlRenderer
             }
             if (!e.ctrlKey || e.altKey || e.metaKey) return;
             var key = e.key;
+            if (e.shiftKey && (key === "e" || key === "E")) {
+              e.preventDefault();
+              post({ type: "toggleExplorer" });
+              return;
+            }
             if (key === "f" || key === "F") {
               e.preventDefault();
               openFind();
