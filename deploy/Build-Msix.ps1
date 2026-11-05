@@ -8,11 +8,10 @@
 
     The Store signs the package after certification, so this script does not sign it.
     It uses no secrets. The identity values are public and come from Partner Center,
-    Product management, Product identity.
+    Product management, Product identity. They are kept in packaging\StoreIdentity.json.
 
-    Until the identity exists, run with -LocalCheck. That packs with placeholder identity
-    values so the manifest and layout can be validated. A package built that way cannot be
-    uploaded.
+    -Store builds the upload package with that identity. -LocalCheck packs with placeholder
+    identity values to validate the manifest and layout. That package cannot be uploaded.
 
 .PARAMETER IdentityName
     Package/Identity/Name from Partner Center.
@@ -26,6 +25,9 @@
 .PARAMETER Architecture
     x64 or arm64. Default x64.
 
+.PARAMETER Store
+    Use the identity in packaging\StoreIdentity.json. This is the package to upload.
+
 .PARAMETER LocalCheck
     Use placeholder identity values. The package is for validation only.
 
@@ -33,10 +35,10 @@
     Prints this help and exits.
 
 .EXAMPLE
-    .\deploy\Build-Msix.ps1 -LocalCheck
+    .\deploy\Build-Msix.ps1 -Store
 
 .EXAMPLE
-    .\deploy\Build-Msix.ps1 -IdentityName "12345SandmarkTechnologies.SandMarkDown" -Publisher "CN=..." -PublisherDisplayName "Sandmark Technologies"
+    .\deploy\Build-Msix.ps1 -LocalCheck
 #>
 #Requires -Version 5.1
 [CmdletBinding()]
@@ -45,6 +47,7 @@ param(
     [string]$Publisher,
     [string]$PublisherDisplayName,
     [ValidateSet("x64", "arm64")][string]$Architecture = "x64",
+    [switch]$Store,
     [switch]$LocalCheck,
     [switch]$Help
 )
@@ -52,21 +55,27 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-if ($Help -or (-not $LocalCheck -and -not $IdentityName -and -not $Publisher -and -not $PublisherDisplayName)) {
+if ($Help -or (-not $Store -and -not $LocalCheck -and -not $IdentityName -and -not $Publisher -and -not $PublisherDisplayName)) {
     Get-Help -Name $PSCommandPath -Full
     exit 0
 }
 
-if ($LocalCheck) {
+$repoRoot = Split-Path -Parent $PSScriptRoot
+
+if ($Store) {
+    $identity = Get-Content -LiteralPath (Join-Path $repoRoot "packaging\StoreIdentity.json") -Raw | ConvertFrom-Json
+    $IdentityName = $identity.identityName
+    $Publisher = $identity.publisher
+    $PublisherDisplayName = $identity.publisherDisplayName
+}
+elseif ($LocalCheck) {
     $IdentityName = "SandmarkTechnologies.SandMarkDown.LocalCheck"
     $Publisher = "CN=SandMarkDown Local Check"
     $PublisherDisplayName = "Sandmark Technologies"
 }
 elseif (-not ($IdentityName -and $Publisher -and $PublisherDisplayName)) {
-    throw "Pass -IdentityName, -Publisher, and -PublisherDisplayName from Partner Center, or use -LocalCheck."
+    throw "Use -Store, -LocalCheck, or pass -IdentityName, -Publisher, and -PublisherDisplayName."
 }
-
-$repoRoot = Split-Path -Parent $PSScriptRoot
 $project = Join-Path $repoRoot "src\SandMarkDown\SandMarkDown.csproj"
 $out = Join-Path $repoRoot "artifacts\msix"
 $layout = Join-Path $out "layout-$Architecture"

@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   MSIX manifest for the Microsoft Store build of SandMarkDown.
-  deploy\Build-Msix.ps1 fills the @@ values. Identity name, publisher, and publisher display name
-  come from Partner Center, Product identity, after the name SandMarkDown is reserved.
+  deploy\Build-Msix.ps1 fills the @@ values. With -Store, identity comes from StoreIdentity.json,
+  which holds the Partner Center Product identity for SandMarkDown.
 -->
 <Package
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"

@@ -28,10 +28,10 @@ That publishes the current Release build to `%LOCALAPPDATA%\Sandmark Technologie
 ## Microsoft Store package
 
 ```powershell
-.\deploy\Build-Msix.ps1 -LocalCheck
+.\deploy\Build-Msix.ps1 -Store
 ```
 
-That publishes a self-contained build and packs `artifacts\msix\SandMarkDown_<version>_x64-localcheck.msix` with placeholder identity, to validate the manifest and layout. For the Store upload, pass the three identity values from Partner Center, Product identity, with `-IdentityName`, `-Publisher`, and `-PublisherDisplayName`. The Store signs the package after certification. Listing text is drafted in `docs/store-listing.md`.
+That publishes a self-contained build and packs `artifacts\msix\SandMarkDown_<version>_x64.msix` with the Partner Center identity in `packaging/StoreIdentity.json` (Store ID 9N30KVRMNNJP). The Store signs the package after certification. `-LocalCheck` packs with placeholder identity for validation only. Listing text is drafted in `docs/store-listing.md`.
 
 ## Read a file
 
