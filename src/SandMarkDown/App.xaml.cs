@@ -88,6 +88,8 @@ public partial class App : Application
         base.OnStartup(e);
         ApplyTheme(ViewSettings.Load(ViewSettingsPath).DarkMode);
 
+        FileAssociation.RepairIfMoved();
+
         var jumpList = new System.Windows.Shell.JumpList { ShowRecentCategory = true };
         System.Windows.Shell.JumpList.SetJumpList(this, jumpList);
         jumpList.Apply();
