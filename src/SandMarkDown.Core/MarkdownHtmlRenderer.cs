@@ -44,11 +44,15 @@ public static partial class MarkdownHtmlRenderer
 
     /// <summary>
     /// Renders <paramref name="markdown"/> as HTML with local links rewritten for the viewer.
+    /// The page runs only the viewer's own script. Markup in the file cannot run script or reach the network.
     /// </summary>
     /// <param name="markdown">Markdown source. An empty file still produces a page.</param>
     /// <param name="documentPath">Path of the file being read. Relative links resolve against its folder.</param>
+    /// <param name="showRemoteImages">
+    /// When <see langword="false"/>, images hosted on the web are hidden until the reader asks for them.
+    /// </param>
     /// <returns>The HTML page and the local files it is allowed to request.</returns>
-    public static RenderedDocument Render(string markdown, string documentPath)
+    public static RenderedDocument Render(string markdown, string documentPath, bool showRemoteImages = false)
     {
         ArgumentNullException.ThrowIfNull(markdown);
         ArgumentException.ThrowIfNullOrWhiteSpace(documentPath);
@@ -56,6 +60,7 @@ public static partial class MarkdownHtmlRenderer
         var fullDocument = Path.GetFullPath(documentPath);
         var directory = Path.GetDirectoryName(fullDocument);
         var resources = new Dictionary<string, string>(StringComparer.Ordinal);
+        var hiddenRemoteImages = 0;
         var body = Markdown.ToHtml(markdown, Pipeline);
         if (string.IsNullOrWhiteSpace(body))
         {
@@ -66,14 +71,23 @@ public static partial class MarkdownHtmlRenderer
             body = HighlightFencedCode(body);
             if (!string.IsNullOrEmpty(directory))
             {
-                body = RewriteLocalUrls(body, directory, resources);
+                var context = new UrlContext(fullDocument, directory, resources, showRemoteImages);
+                body = RewriteUrls(body, context);
+                hiddenRemoteImages = context.HiddenRemoteImages;
             }
 
             body = WrapTables(body);
         }
 
+        var notice = hiddenRemoteImages > 0 ? RemoteImageNotice(hiddenRemoteImages) : string.Empty;
         var title = Path.GetFileName(fullDocument);
-        return new RenderedDocument(Wrap(body, title, BuildOutline(body)), resources, fullDocument);
+        var policy = ContentSecurityPolicy.Create(showRemoteImages);
+        return new RenderedDocument(
+            Wrap(notice + body, title, BuildOutline(body), policy),
+            resources,
+            fullDocument,
+            policy.Header,
+            hiddenRemoteImages);
     }
 
     /// <summary>
@@ -88,44 +102,75 @@ public static partial class MarkdownHtmlRenderer
             <p>Open a file, or drop one here.</p>
             """;
         var resources = new Dictionary<string, string>(StringComparer.Ordinal);
-        return new RenderedDocument(Wrap(body, Branding.ProductName, string.Empty), resources, null);
+        var policy = ContentSecurityPolicy.Create(showRemoteImages: false);
+        return new RenderedDocument(
+            Wrap(body, Branding.ProductName, string.Empty, policy),
+            resources,
+            null,
+            policy.Header,
+            hiddenRemoteImages: 0);
     }
 
-    private static string RewriteLocalUrls(
-        string html,
+    private sealed class UrlContext(
+        string documentPath,
         string directory,
-        Dictionary<string, string> resources)
+        Dictionary<string, string> resources,
+        bool showRemoteImages)
+    {
+        public string DocumentPath { get; } = documentPath;
+
+        public string Directory { get; } = directory;
+
+        public Dictionary<string, string> Resources { get; } = resources;
+
+        public bool ShowRemoteImages { get; } = showRemoteImages;
+
+        public int HiddenRemoteImages { get; set; }
+    }
+
+    private static string RewriteUrls(string html, UrlContext context)
     {
         return LocalUrlAttribute().Replace(html, match =>
         {
+            var isImage = match.Groups["tag"].Value.Equals("img", StringComparison.OrdinalIgnoreCase);
             var urlGroup = match.Groups["url"];
-            var rewritten = RewriteUrl(urlGroup.Value, directory, resources);
+            var url = urlGroup.Value.Trim();
+            if (url.StartsWith("//", StringComparison.Ordinal))
+            {
+                url = "https:" + url;
+            }
+
             var relativeStart = urlGroup.Index - match.Index;
-            return string.Concat(
-                match.Value[..relativeStart],
-                rewritten,
-                match.Value[(relativeStart + urlGroup.Length)..]);
+            var before = match.Value[..relativeStart];
+            var after = match.Value[(relativeStart + urlGroup.Length)..];
+
+            if (isImage && IsWebUrl(url) && !context.ShowRemoteImages)
+            {
+                context.HiddenRemoteImages++;
+                var attrGroup = match.Groups["attr"];
+                var attrStart = attrGroup.Index - match.Index;
+                return string.Concat(
+                    match.Value[..attrStart],
+                    "data-smt-remote-src",
+                    match.Value[(attrStart + attrGroup.Length)..relativeStart],
+                    WebUtility.HtmlEncode(WebUtility.HtmlDecode(url)),
+                    after);
+            }
+
+            return string.Concat(before, RewriteUrl(url, isImage, context), after);
         });
     }
 
-    private static string RewriteUrl(
-        string url,
-        string directory,
-        Dictionary<string, string> resources)
+    private static string RewriteUrl(string url, bool isImage, UrlContext context)
     {
         if (string.IsNullOrWhiteSpace(url) || url.StartsWith('#'))
         {
             return url;
         }
 
-        if (url.StartsWith("javascript:", StringComparison.OrdinalIgnoreCase))
-        {
-            return "#";
-        }
-
         if (HasRemoteScheme(url))
         {
-            return url;
+            return IsAllowedScheme(url) ? url : "#";
         }
 
         if (!TrySplitSuffix(url, out var pathPart, out var suffix))
@@ -134,26 +179,59 @@ public static partial class MarkdownHtmlRenderer
         }
 
         string fullPath;
-        if (url.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
+        try
         {
-            if (!Uri.TryCreate(pathPart, UriKind.Absolute, out var fileUri) || !fileUri.IsFile)
+            if (url.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
             {
-                return url;
-            }
+                if (!Uri.TryCreate(pathPart, UriKind.Absolute, out var fileUri) || !fileUri.IsFile)
+                {
+                    return "#";
+                }
 
-            fullPath = fileUri.LocalPath;
+                fullPath = fileUri.LocalPath;
+            }
+            else
+            {
+                var decoded = Uri.UnescapeDataString(WebUtility.HtmlDecode(pathPart)).Replace('/', '\\');
+                fullPath = Path.IsPathRooted(decoded)
+                    ? Path.GetFullPath(decoded)
+                    : Path.GetFullPath(Path.Combine(context.Directory, decoded));
+            }
         }
-        else
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException or UriFormatException)
         {
-            var decoded = Uri.UnescapeDataString(pathPart.Replace('\\', '/'));
-            fullPath = Path.IsPathRooted(decoded)
-                ? Path.GetFullPath(decoded)
-                : Path.GetFullPath(Path.Combine(directory, decoded));
+            return "#";
+        }
+
+        // Loading an image from another computer's share sends Windows sign-in details to that computer.
+        if (isImage && !MarkdownPaths.IsSameMachineOrShare(context.DocumentPath, fullPath))
+        {
+            return BlankImage;
         }
 
         var token = EncodeToken(fullPath);
-        resources[token] = fullPath;
+        context.Resources[token] = fullPath;
         return $"https://{VirtualHost}/local/{token}{suffix}";
+    }
+
+    private const string BlankImage = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
+
+    private static bool IsWebUrl(string url) =>
+        url.StartsWith("http:", StringComparison.OrdinalIgnoreCase)
+        || url.StartsWith("https:", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsAllowedScheme(string url) =>
+        IsWebUrl(url) || url.StartsWith("mailto:", StringComparison.OrdinalIgnoreCase);
+
+    private static string RemoteImageNotice(int count)
+    {
+        var noun = count == 1 ? "image from the web is" : "images from the web are";
+        return $"""
+            <div class="smt-remote" role="status">
+            <span>{count} {noun} hidden. Showing them tells those sites you opened this file.</span>
+            <button type="button" id="smt-show-remote">Show images</button>
+            </div>
+            """;
     }
 
     private static bool HasRemoteScheme(string url)
@@ -212,14 +290,24 @@ public static partial class MarkdownHtmlRenderer
         return encoded.TrimEnd('=').Replace('+', '-').Replace('/', '_');
     }
 
-    private static string Wrap(string body, string title, string outline)
+    private static string Wrap(string body, string title, string outline, ContentSecurityPolicy policy)
     {
-        var encodedTitle = WebUtility.HtmlEncode(title);
-        return PageTemplate
-            .Replace("@@TITLE@@", encodedTitle, StringComparison.Ordinal)
-            .Replace("@@TOKENS@@", TokensCss, StringComparison.Ordinal)
-            .Replace("@@OUTLINE@@", outline, StringComparison.Ordinal)
-            .Replace("@@BODY@@", body, StringComparison.Ordinal);
+        var page = PageTemplate
+            .Replace("@@CSP@@", WebUtility.HtmlEncode(policy.Header), StringComparison.Ordinal)
+            .Replace("@@NONCE@@", policy.Nonce, StringComparison.Ordinal)
+            .Replace("@@TITLE@@", WebUtility.HtmlEncode(title), StringComparison.Ordinal)
+            .Replace("@@TOKENS@@", TokensCss, StringComparison.Ordinal);
+
+        // The body and outline come from the file. Splicing them in, instead of calling Replace,
+        // keeps placeholder text written inside the file from being expanded.
+        var bodyAt = page.IndexOf("@@BODY@@", StringComparison.Ordinal);
+        var outlineAt = page.IndexOf("@@OUTLINE@@", StringComparison.Ordinal);
+        return string.Concat(
+            page[..bodyAt],
+            body,
+            page[(bodyAt + "@@BODY@@".Length)..outlineAt],
+            outline,
+            page[(outlineAt + "@@OUTLINE@@".Length)..]);
     }
 
     private static string BuildOutline(string html)
@@ -299,6 +387,9 @@ public static partial class MarkdownHtmlRenderer
         <html lang="en" data-theme="dark">
         <head>
         <meta charset="utf-8">
+        <meta http-equiv="Content-Security-Policy" content="@@CSP@@">
+        <meta http-equiv="x-dns-prefetch-control" content="off">
+        <meta name="referrer" content="no-referrer">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>@@TITLE@@</title>
         <style>
@@ -479,6 +570,39 @@ public static partial class MarkdownHtmlRenderer
           padding: 0.35rem;
         }
         .smt-find[hidden] { display: none; }
+        .smt-remote {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.5rem 1rem;
+          align-items: center;
+          margin: 0 0 1.25rem;
+          padding: 0.6rem 0.85rem;
+          background: var(--smt-surface);
+          border: 1px solid var(--smt-line);
+          border-left: 3px solid var(--smt-accent);
+          border-radius: var(--smt-radius);
+          color: var(--smt-muted);
+          font-size: 0.9rem;
+        }
+        .smt-remote button {
+          background: var(--smt-accent);
+          color: var(--smt-on-accent);
+          border: 0;
+          border-radius: 0.25rem;
+          padding: 0.3rem 0.75rem;
+          font: 600 0.875rem var(--smt-font);
+          cursor: pointer;
+        }
+        .smt-prose img[data-smt-remote-src] {
+          display: inline-block;
+          min-width: 6rem;
+          min-height: 2rem;
+          padding: 0.35rem 0.6rem;
+          border: 1px dashed var(--smt-line);
+          border-radius: var(--smt-radius);
+          color: var(--smt-muted);
+          font-size: 0.85rem;
+        }
         body:has(.smt-find:not([hidden])) .smt-main {
           padding-top: 4.25rem;
         }
@@ -541,7 +665,7 @@ public static partial class MarkdownHtmlRenderer
         </article>
         @@OUTLINE@@
         </main>
-        <script>
+        <script nonce="@@NONCE@@">
         (function () {
           var find = document.getElementById("smt-find");
           var findInput = document.getElementById("smt-find-input");
@@ -651,6 +775,10 @@ public static partial class MarkdownHtmlRenderer
           document.getElementById("smt-find-prev").addEventListener("click", function () { step(-1); });
           document.getElementById("smt-find-next").addEventListener("click", function () { step(1); });
           document.getElementById("smt-find-close").addEventListener("click", closeFind);
+          var showRemote = document.getElementById("smt-show-remote");
+          if (showRemote) {
+            showRemote.addEventListener("click", function () { post({ type: "showRemoteImages" }); });
+          }
           window.smtFind = {
             open: openFind,
             next: function () { step(1); },

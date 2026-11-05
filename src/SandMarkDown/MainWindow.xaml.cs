@@ -21,14 +21,15 @@ public partial class MainWindow : Window
         "zoom.json");
 
     private readonly Dictionary<string, string> _resources = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _remoteImagesShown = new(StringComparer.OrdinalIgnoreCase);
     private readonly ReadingHistory _history = new();
     private RenderedDocument? _pending;
     private string? _documentPath;
     private string? _pendingFragment;
     private string _html = string.Empty;
+    private string _contentSecurityPolicy = string.Empty;
     private double _zoom = ZoomMath.Actual;
     private bool _webReady;
-    private bool _previewLoaded;
     private long _lastTravelMs;
 
     /// <summary>
@@ -63,7 +64,10 @@ public partial class MainWindow : Window
             }
 
             var markdown = File.ReadAllText(fullPath);
-            var rendered = MarkdownHtmlRenderer.Render(markdown, fullPath);
+            var rendered = MarkdownHtmlRenderer.Render(
+                markdown,
+                fullPath,
+                showRemoteImages: _remoteImagesShown.Contains(fullPath));
             _documentPath = fullPath;
             _pendingFragment = string.IsNullOrEmpty(fragment) ? null : fragment;
             CloseMenuItem.IsEnabled = true;
@@ -151,6 +155,7 @@ public partial class MainWindow : Window
     private void ShowRendered(RenderedDocument document)
     {
         _html = document.Html;
+        _contentSecurityPolicy = document.ContentSecurityPolicy;
         _resources.Clear();
         foreach (var pair in document.LocalResources)
         {
@@ -164,39 +169,10 @@ public partial class MainWindow : Window
         }
 
         _pending = null;
-        // A new query value forces WebView2 to load the page. Later loads replace the
-        // current history entry so the mouse back button does not walk WebView2's list.
-        // File history belongs to ReadingHistory.
-        var url = $"{MarkdownHtmlRenderer.PreviewUrl}?d={DateTime.UtcNow.Ticks}";
-        if (!_previewLoaded)
-        {
-            _previewLoaded = true;
-            Viewer.CoreWebView2.Navigate(url);
-        }
-        else
-        {
-            _ = ReplacePreviewAsync(url);
-        }
-
+        // A new query value forces WebView2 to load the page. WebView2's own back and forward
+        // are cancelled in OnNavigationStarting, because file history belongs to ReadingHistory.
+        Viewer.CoreWebView2.Navigate($"{MarkdownHtmlRenderer.PreviewUrl}?d={DateTime.UtcNow.Ticks}");
         Viewer.Focus();
-    }
-
-    private async Task ReplacePreviewAsync(string url)
-    {
-        var core = Viewer.CoreWebView2;
-        if (core is null)
-        {
-            return;
-        }
-
-        try
-        {
-            await core.ExecuteScriptAsync($"location.replace({JsonSerializer.Serialize(url)})");
-        }
-        catch (InvalidOperationException)
-        {
-            // The viewer closed while the page was loading.
-        }
     }
 
     private void OnWebResourceRequested(object? sender, CoreWebView2WebResourceRequestedEventArgs e)
@@ -215,15 +191,22 @@ public partial class MainWindow : Window
                 new MemoryStream(bytes),
                 200,
                 "OK",
-                "Content-Type: text/html; charset=utf-8");
+                "Content-Type: text/html; charset=utf-8\r\n"
+                + "Content-Security-Policy: " + _contentSecurityPolicy + "\r\n"
+                + "X-Content-Type-Options: nosniff\r\n"
+                + "Referrer-Policy: no-referrer");
             return;
         }
 
+        // Local files reach the page only as images. Anything else would let markup read it.
         const string localPrefix = "/local/";
-        if (uri.AbsolutePath.StartsWith(localPrefix, StringComparison.OrdinalIgnoreCase))
+        if (e.ResourceContext == CoreWebView2WebResourceContext.Image
+            && uri.AbsolutePath.StartsWith(localPrefix, StringComparison.OrdinalIgnoreCase))
         {
             var token = Uri.UnescapeDataString(uri.AbsolutePath[localPrefix.Length..]);
-            if (_resources.TryGetValue(token, out var path) && File.Exists(path))
+            if (_resources.TryGetValue(token, out var path)
+                && MarkdownPaths.ImageContentType(path) is string contentType
+                && File.Exists(path))
             {
                 try
                 {
@@ -231,10 +214,10 @@ public partial class MainWindow : Window
                         File.OpenRead(path),
                         200,
                         "OK",
-                        "Content-Type: " + ContentType(path));
+                        "Content-Type: " + contentType + "\r\nX-Content-Type-Options: nosniff");
                     return;
                 }
-                catch (IOException)
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
                     // Fall through to the not-found response.
                 }
@@ -252,42 +235,46 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (uri.Host.Equals(MarkdownHtmlRenderer.VirtualHost, StringComparison.OrdinalIgnoreCase))
+        if (uri.Host.Equals(MarkdownHtmlRenderer.VirtualHost, StringComparison.OrdinalIgnoreCase)
+            && uri.AbsolutePath.Equals("/preview", StringComparison.OrdinalIgnoreCase))
         {
-            if (uri.AbsolutePath.Equals("/preview", StringComparison.OrdinalIgnoreCase))
+            if (e.NavigationKind == CoreWebView2NavigationKind.BackOrForward)
             {
-                if (e.NavigationKind == CoreWebView2NavigationKind.BackOrForward)
-                {
-                    e.Cancel = true;
-                }
-
-                return;
+                e.Cancel = true;
             }
 
+            return;
+        }
+
+        e.Cancel = true;
+        if (e.IsUserInitiated)
+        {
+            FollowLink(uri);
+        }
+    }
+
+    // Links open only from a click. A file cannot open a browser or another program on its own.
+    private void FollowLink(Uri uri)
+    {
+        if (uri.Host.Equals(MarkdownHtmlRenderer.VirtualHost, StringComparison.OrdinalIgnoreCase))
+        {
             const string localPrefix = "/local/";
             if (uri.AbsolutePath.StartsWith(localPrefix, StringComparison.OrdinalIgnoreCase))
             {
                 var token = Uri.UnescapeDataString(uri.AbsolutePath[localPrefix.Length..]);
                 if (_resources.TryGetValue(token, out var path))
                 {
-                    e.Cancel = true;
                     OpenLinkedLocalFile(path, uri.Fragment);
-                    return;
                 }
             }
 
-            e.Cancel = true;
             return;
         }
 
-        if (uri.Scheme is "http" or "https")
+        if (uri.Scheme is "http" or "https" or "mailto")
         {
-            e.Cancel = true;
             OpenExternal(uri.AbsoluteUri);
-            return;
         }
-
-        e.Cancel = true;
     }
 
     private async void OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
@@ -336,6 +323,9 @@ public partial class MainWindow : Window
                 case "forward":
                     GoForward();
                     break;
+                case "showRemoteImages":
+                    ShowRemoteImages();
+                    break;
             }
         }
         catch (JsonException)
@@ -347,10 +337,21 @@ public partial class MainWindow : Window
     private void OnNewWindowRequested(object? sender, CoreWebView2NewWindowRequestedEventArgs e)
     {
         e.Handled = true;
-        if (!string.IsNullOrWhiteSpace(e.Uri))
+        if (e.IsUserInitiated && Uri.TryCreate(e.Uri, UriKind.Absolute, out var uri))
         {
-            OpenExternal(e.Uri);
+            FollowLink(uri);
         }
+    }
+
+    private void ShowRemoteImages()
+    {
+        if (_documentPath is null)
+        {
+            return;
+        }
+
+        _remoteImagesShown.Add(_documentPath);
+        OpenDocument(_documentPath, fragment: null, recordHistory: false);
     }
 
     private void OpenLinkedLocalFile(string path, string fragment)
@@ -358,6 +359,26 @@ public partial class MainWindow : Window
         if (MarkdownPaths.IsMarkdownFile(path))
         {
             OpenDocument(path, string.IsNullOrEmpty(fragment) ? null : fragment, recordHistory: true);
+            return;
+        }
+
+        if (Directory.Exists(path))
+        {
+            OpenExternal(path);
+            return;
+        }
+
+        if (!File.Exists(path))
+        {
+            StatusText.Text = $"Link target not found: {path}";
+            return;
+        }
+
+        // A link to a program or script is shown in File Explorer instead of being run.
+        if (ShellFiles.CanRunCode(path))
+        {
+            ShellFiles.ShowInFolder(path);
+            StatusText.Text = $"Showing {Path.GetFileName(path)} in File Explorer. SandMarkDown does not run programs from links.";
             return;
         }
 
@@ -525,21 +546,6 @@ public partial class MainWindow : Window
     private void ShowError(string message)
     {
         MessageBox.Show(this, message, Branding.ProductName, MessageBoxButton.OK, MessageBoxImage.Warning);
-    }
-
-    private static string ContentType(string path)
-    {
-        return Path.GetExtension(path).ToLowerInvariant() switch
-        {
-            ".png" => "image/png",
-            ".jpg" or ".jpeg" => "image/jpeg",
-            ".gif" => "image/gif",
-            ".webp" => "image/webp",
-            ".svg" => "image/svg+xml",
-            ".bmp" => "image/bmp",
-            ".ico" => "image/x-icon",
-            _ => "application/octet-stream"
-        };
     }
 
     private void OnOpenClick(object sender, RoutedEventArgs e) => ShowOpenDialog();

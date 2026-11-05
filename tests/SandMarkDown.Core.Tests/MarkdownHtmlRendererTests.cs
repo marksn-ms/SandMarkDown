@@ -120,6 +120,107 @@ public class MarkdownHtmlRendererTests
     }
 
     /// <summary>
+    /// Script written in the file is left inert. Only the viewer's script carries the nonce the policy allows.
+    /// </summary>
+    [Fact]
+    public void Render_allows_only_the_viewers_own_script()
+    {
+        var rendered = MarkdownHtmlRenderer.Render(
+            """
+            <script>document.title = "pwned"</script>
+
+            ![pic](a.png){onerror="alert(1)"}
+            """,
+            SamplePath());
+
+        var nonce = System.Text.RegularExpressions.Regex.Match(rendered.ContentSecurityPolicy, "'nonce-([^']+)'").Groups[1].Value;
+        Assert.False(string.IsNullOrEmpty(nonce));
+        Assert.Contains("default-src 'none'", rendered.ContentSecurityPolicy, StringComparison.Ordinal);
+        Assert.Contains("connect-src 'none'", rendered.ContentSecurityPolicy, StringComparison.Ordinal);
+        Assert.DoesNotContain("unsafe-inline' 'nonce", rendered.ContentSecurityPolicy, StringComparison.Ordinal);
+        Assert.Matches("script-src 'nonce-[^']+';", rendered.ContentSecurityPolicy);
+        Assert.Contains($"<script nonce=\"{nonce}\">", rendered.Html, StringComparison.Ordinal);
+        Assert.Contains("http-equiv=\"Content-Security-Policy\"", rendered.Html, StringComparison.Ordinal);
+        Assert.Equal(1, CountOf(rendered.Html, $"nonce=\"{nonce}\""));
+    }
+
+    /// <summary>
+    /// Each page gets a fresh nonce.
+    /// </summary>
+    [Fact]
+    public void Render_uses_a_new_nonce_each_time()
+    {
+        var first = MarkdownHtmlRenderer.Render("text", SamplePath());
+        var second = MarkdownHtmlRenderer.Render("text", SamplePath());
+        Assert.NotEqual(first.ContentSecurityPolicy, second.ContentSecurityPolicy);
+    }
+
+    /// <summary>
+    /// Web images wait until the reader asks for them.
+    /// </summary>
+    [Fact]
+    public void Render_hides_web_images_until_asked()
+    {
+        const string markdown = """
+            ![one](https://example.com/a.png)
+            ![two](//example.com/b.png)
+            """;
+
+        var hidden = MarkdownHtmlRenderer.Render(markdown, SamplePath());
+        Assert.Equal(2, hidden.HiddenRemoteImages);
+        Assert.Contains("data-smt-remote-src=\"https://example.com/a.png\"", hidden.Html, StringComparison.Ordinal);
+        Assert.DoesNotContain("src=\"https://example.com/a.png\"", hidden.Html.Replace("data-smt-remote-src", string.Empty, StringComparison.Ordinal), StringComparison.Ordinal);
+        Assert.Contains("id=\"smt-show-remote\"", hidden.Html, StringComparison.Ordinal);
+        Assert.DoesNotContain("https: http:", hidden.ContentSecurityPolicy, StringComparison.Ordinal);
+
+        var shown = MarkdownHtmlRenderer.Render(markdown, SamplePath(), showRemoteImages: true);
+        Assert.Equal(0, shown.HiddenRemoteImages);
+        Assert.Contains("src=\"https://example.com/a.png\"", shown.Html, StringComparison.Ordinal);
+        Assert.DoesNotContain("id=\"smt-show-remote\"", shown.Html, StringComparison.Ordinal);
+        Assert.Contains("img-src https://sandmarkdown.local data: https: http:", shown.ContentSecurityPolicy, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// An image on another computer's share is not loaded, because that would send sign-in details there.
+    /// </summary>
+    [Fact]
+    public void Render_does_not_load_images_from_other_computers()
+    {
+        var rendered = MarkdownHtmlRenderer.Render(
+            """
+            ![unc](\\\\attacker\\share\\a.png)
+            ![file](file://attacker/share/b.png)
+
+            <img src="\\attacker\share\c.png">
+            """,
+            Path.Combine(@"C:\notes", "sample.md"));
+
+        Assert.Empty(rendered.LocalResources);
+        Assert.DoesNotContain("attacker", rendered.Html.Replace("alt=\"", string.Empty, StringComparison.Ordinal), StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Placeholder text written in the file stays literal.
+    /// </summary>
+    [Fact]
+    public void Render_keeps_template_placeholders_in_the_file_literal()
+    {
+        var rendered = MarkdownHtmlRenderer.Render(
+            """
+            # @@BODY@@
+
+            ## @@NONCE@@
+
+            @@OUTLINE@@ @@CSP@@
+            """,
+            SamplePath());
+
+        Assert.Contains("@@NONCE@@", rendered.Html, StringComparison.Ordinal);
+        Assert.Contains("@@CSP@@", rendered.Html, StringComparison.Ordinal);
+        Assert.Equal(1, CountOf(rendered.Html, "<article"));
+    }
+
+    /// <summary>
     /// The welcome page names the product and uses the dark theme.
     /// </summary>
     [Fact]
@@ -190,5 +291,48 @@ public class MarkdownHtmlRendererTests
         Assert.Equal(expected, MarkdownPaths.IsMarkdownFile(path));
     }
 
+    /// <summary>
+    /// Only image types are served to the page from disk.
+    /// </summary>
+    [Theory]
+    [InlineData("a.PNG", "image/png")]
+    [InlineData("a.svg", "image/svg+xml")]
+    [InlineData("secret.txt", null)]
+    [InlineData("id_ed25519", null)]
+    [InlineData("notes.md", null)]
+    public void Image_content_type_check(string path, string? expected)
+    {
+        Assert.Equal(expected, MarkdownPaths.ImageContentType(path));
+    }
+
+    /// <summary>
+    /// Files on this computer, or on the same share as the document, may load. Other computers may not.
+    /// </summary>
+    [Theory]
+    [InlineData(@"C:\notes\a.md", @"C:\notes\pic.png", true)]
+    [InlineData(@"C:\notes\a.md", @"D:\pics\pic.png", true)]
+    [InlineData(@"C:\notes\a.md", @"\\?\C:\notes\pic.png", true)]
+    [InlineData(@"C:\notes\a.md", @"\\server\share\pic.png", false)]
+    [InlineData(@"C:\notes\a.md", @"\\?\UNC\server\share\pic.png", false)]
+    [InlineData(@"\\server\share\a.md", @"\\SERVER\share\pic.png", true)]
+    [InlineData(@"\\server\share\a.md", @"\\other\share\pic.png", false)]
+    public void Same_machine_or_share_check(string document, string resource, bool expected)
+    {
+        Assert.Equal(expected, MarkdownPaths.IsSameMachineOrShare(document, resource));
+    }
+
     private static string SamplePath() => Path.Combine(Path.GetTempPath(), "sample.md");
+
+    private static int CountOf(string text, string value)
+    {
+        var count = 0;
+        var at = 0;
+        while ((at = text.IndexOf(value, at, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            at += value.Length;
+        }
+
+        return count;
+    }
 }
