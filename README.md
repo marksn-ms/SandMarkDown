@@ -53,7 +53,7 @@ View, Preview shows a miniature of the whole file on the right edge. Hover it to
 
 When you save the open file in another program, the page updates and keeps its place. File, Print (Ctrl+P) prints in dark text on white. The window opens where you left it.
 
-Double-click a `.md` file to open it when SandMarkDown is the default app for Markdown files.
+Double-click a `.md` file to open it when SandMarkDown is the default app for Markdown files. Help, Set as Default for Markdown registers the copy you are running for your user, without admin rights, and opens Settings, Default apps, on SandMarkDown's page. Windows lets only you choose the default, so you confirm it there. If SandMarkDown is already your choice, re-registering points double-click at this copy and no Settings step is needed. If the registered copy is moved or deleted, the next copy you start registers itself in its place.
 
 ## Privacy and safety
 

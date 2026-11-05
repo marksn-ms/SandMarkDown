@@ -307,6 +307,46 @@ public partial class MainWindow
 
     private void OnExplorerRefreshClick(object sender, RoutedEventArgs e) => LoadExplorer();
 
+    // Windows lets the user, not the app, pick the default. Register this copy, then open Settings on its page.
+    private void OnSetDefaultClick(object sender, RoutedEventArgs e)
+    {
+        if (!FileAssociation.IsPackaged)
+        {
+            try
+            {
+                FileAssociation.Register();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+            {
+                ShowError($"SandMarkDown could not register for Markdown files.\n\n{ex.Message}");
+                return;
+            }
+
+            if (FileAssociation.IsUserDefault())
+            {
+                MessageBox.Show(
+                    this,
+                    $"SandMarkDown already opens .md and .markdown files.\n\nDouble-click now uses this copy:\n{FileAssociation.ExecutablePath}",
+                    Branding.ProductName,
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+        }
+
+        var answer = MessageBox.Show(
+            this,
+            "Windows lets you choose default apps yourself. Settings will open on SandMarkDown's page.\n\n"
+            + "Choose Set default, or pick SandMarkDown for .md and .markdown.",
+            Branding.ProductName,
+            MessageBoxButton.OKCancel,
+            MessageBoxImage.Information);
+        if (answer == MessageBoxResult.OK)
+        {
+            FileAssociation.OpenDefaultAppsSettings();
+        }
+    }
+
     private void OnOpenFolderClick(object sender, RoutedEventArgs e)
     {
         var dialog = new Microsoft.Win32.OpenFolderDialog

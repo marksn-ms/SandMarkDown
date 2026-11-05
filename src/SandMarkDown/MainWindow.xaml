@@ -43,6 +43,8 @@
                 <MenuItem Header="_Actual Size" Click="OnZoomResetClick" InputGestureText="Ctrl+0"/>
             </MenuItem>
             <MenuItem Header="_Help">
+                <MenuItem Header="Set as _Default for Markdown..." Click="OnSetDefaultClick"/>
+                <Separator/>
                 <MenuItem Header="_About SandMarkDown..." Click="OnAboutClick"/>
             </MenuItem>
         </Menu>
