@@ -275,8 +275,59 @@ public class MarkdownHtmlRendererTests
         var rendered = MarkdownHtmlRenderer.Render(markdown, SamplePath());
 
         Assert.Contains("language-csharp", rendered.Html, StringComparison.Ordinal);
-        Assert.Contains("public", rendered.Html, StringComparison.Ordinal);
-        Assert.Contains("color:", rendered.Html, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("<span class=\"keyword\">public</span>", rendered.Html, StringComparison.Ordinal);
+        Assert.Contains(":root[data-theme=\"dark\"] .smt-prose pre .keyword{color:#", rendered.Html, StringComparison.Ordinal);
+        Assert.Contains(":root[data-theme=\"light\"] .smt-prose pre .keyword{color:#", rendered.Html, StringComparison.Ordinal);
+        Assert.DoesNotMatch("color:#[0-9A-Fa-f]{8};", rendered.Html);
+    }
+
+    /// <summary>
+    /// View settings set the theme, sidebar, and preview on the page.
+    /// </summary>
+    [Fact]
+    public void Render_applies_view_settings()
+    {
+        var light = MarkdownHtmlRenderer.Render(
+            "# A\n\n## B",
+            SamplePath(),
+            view: new ViewSettings(ShowPreview: false, ShowSidebar: false, DarkMode: false));
+
+        Assert.Contains("data-theme=\"light\" data-sidebar=\"off\" data-preview=\"off\"", light.Html, StringComparison.Ordinal);
+
+        var dark = MarkdownHtmlRenderer.Render("# A\n\n## B", SamplePath());
+        Assert.Contains("data-theme=\"dark\" data-sidebar=\"on\" data-preview=\"on\"", dark.Html, StringComparison.Ordinal);
+        Assert.Contains("id=\"smt-minimap\"", dark.Html, StringComparison.Ordinal);
+        Assert.Contains("window.smtView", dark.Html, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The welcome page has nothing to map, so it has no preview.
+    /// </summary>
+    [Fact]
+    public void Welcome_has_no_preview()
+    {
+        var welcome = MarkdownHtmlRenderer.Welcome(ViewSettings.Default);
+        Assert.Contains("data-preview=\"off\"", welcome.Html, StringComparison.Ordinal);
+        Assert.DoesNotContain("id=\"smt-minimap\"", welcome.Html, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// View settings round-trip and fall back to defaults.
+    /// </summary>
+    [Fact]
+    public void View_settings_round_trip()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "sandmarkdown-tests", Guid.NewGuid().ToString("N"));
+        var path = Path.Combine(directory, "view.json");
+        Assert.Equal(ViewSettings.Default, ViewSettings.Load(path));
+
+        var custom = new ViewSettings(ShowPreview: false, ShowSidebar: true, DarkMode: false);
+        custom.Save(path);
+        Assert.Equal(custom, ViewSettings.Load(path));
+
+        File.WriteAllText(path, "not json");
+        Assert.Equal(ViewSettings.Default, ViewSettings.Load(path));
+        Assert.Equal("{\"preview\":false,\"sidebar\":true,\"dark\":false}", custom.ToPageJson());
     }
 
     /// <summary>

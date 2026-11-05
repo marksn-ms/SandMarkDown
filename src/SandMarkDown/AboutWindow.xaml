@@ -13,7 +13,7 @@
         Loaded="OnLoaded"
         PreviewKeyDown="OnWindowPreviewKeyDown">
     <Grid>
-        <wv2:WebView2 x:Name="Page" DefaultBackgroundColor="#101418"/>
+        <wv2:WebView2 x:Name="Page"/>
 
         <Border x:Name="CanyonCard"
                 Visibility="Collapsed"

@@ -31,6 +31,10 @@
                 <Separator/>
                 <MenuItem Header="_Find..." Click="OnFindClick" InputGestureText="Ctrl+F"/>
                 <Separator/>
+                <MenuItem x:Name="PreviewMenuItem" Header="_Preview" IsCheckable="True" Click="OnViewOptionClick"/>
+                <MenuItem x:Name="SidebarMenuItem" Header="_Sidebar" IsCheckable="True" Click="OnViewOptionClick"/>
+                <MenuItem x:Name="DarkModeMenuItem" Header="_Dark mode" IsCheckable="True" Click="OnViewOptionClick"/>
+                <Separator/>
                 <MenuItem Header="Zoom _In" Click="OnZoomInClick" InputGestureText="Ctrl++"/>
                 <MenuItem Header="Zoom _Out" Click="OnZoomOutClick" InputGestureText="Ctrl+-"/>
                 <MenuItem Header="_Actual Size" Click="OnZoomResetClick" InputGestureText="Ctrl+0"/>
@@ -64,7 +68,6 @@
         </Border>
 
         <wv2:WebView2 x:Name="Viewer"
-                      DefaultBackgroundColor="#101418"
                       AutomationProperties.Name="Document" />
     </DockPanel>
 </Window>

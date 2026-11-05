@@ -4,7 +4,7 @@
              ThemeMode="Dark">
     <!--
       Style: sandmark-app
-      Theme: dark
+      Theme: dark by default. View, Dark mode switches to the light palette in App.ApplyTheme.
       Tokens: docs/tokens.css
     -->
     <Application.Resources>
@@ -23,32 +23,32 @@
         <SolidColorBrush x:Key="AccentBrushHover" Color="#FFA9D0E8"/>
 
         <Style TargetType="Window">
-            <Setter Property="FontFamily" Value="{StaticResource SmtFont}"/>
-            <Setter Property="Background" Value="{StaticResource SmtPage}"/>
-            <Setter Property="Foreground" Value="{StaticResource SmtInk}"/>
+            <Setter Property="FontFamily" Value="{DynamicResource SmtFont}"/>
+            <Setter Property="Background" Value="{DynamicResource SmtPage}"/>
+            <Setter Property="Foreground" Value="{DynamicResource SmtInk}"/>
         </Style>
 
         <Style TargetType="Menu">
-            <Setter Property="Background" Value="{StaticResource SmtSurface}"/>
-            <Setter Property="Foreground" Value="{StaticResource SmtInk}"/>
-            <Setter Property="FontFamily" Value="{StaticResource SmtFont}"/>
+            <Setter Property="Background" Value="{DynamicResource SmtSurface}"/>
+            <Setter Property="Foreground" Value="{DynamicResource SmtInk}"/>
+            <Setter Property="FontFamily" Value="{DynamicResource SmtFont}"/>
         </Style>
 
         <Style TargetType="MenuItem">
-            <Setter Property="Foreground" Value="{StaticResource SmtInk}"/>
-            <Setter Property="Background" Value="{StaticResource SmtSurface}"/>
-            <Setter Property="FontFamily" Value="{StaticResource SmtFont}"/>
+            <Setter Property="Foreground" Value="{DynamicResource SmtInk}"/>
+            <Setter Property="Background" Value="{DynamicResource SmtSurface}"/>
+            <Setter Property="FontFamily" Value="{DynamicResource SmtFont}"/>
             <Style.Triggers>
                 <Trigger Property="IsEnabled" Value="False">
-                    <Setter Property="Foreground" Value="{StaticResource SmtMuted}"/>
+                    <Setter Property="Foreground" Value="{DynamicResource SmtMuted}"/>
                 </Trigger>
             </Style.Triggers>
         </Style>
 
         <Style x:Key="ToolbarButtonStyle" TargetType="Button">
-            <Setter Property="Background" Value="{StaticResource SmtAccent}"/>
-            <Setter Property="Foreground" Value="{StaticResource SmtOnAccent}"/>
-            <Setter Property="FontFamily" Value="{StaticResource SmtFont}"/>
+            <Setter Property="Background" Value="{DynamicResource SmtAccent}"/>
+            <Setter Property="Foreground" Value="{DynamicResource SmtOnAccent}"/>
+            <Setter Property="FontFamily" Value="{DynamicResource SmtFont}"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Padding" Value="12,6"/>
             <Setter Property="Margin" Value="0,0,8,0"/>
@@ -65,7 +65,7 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource AccentBrushHover}"/>
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource AccentBrushHover}"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter TargetName="Bd" Property="Opacity" Value="0.45"/>
@@ -79,9 +79,9 @@
         <Style x:Key="LinkButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Foreground" Value="{StaticResource SmtAccentInk}"/>
+            <Setter Property="Foreground" Value="{DynamicResource SmtAccentInk}"/>
             <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="FontFamily" Value="{StaticResource SmtFont}"/>
+            <Setter Property="FontFamily" Value="{DynamicResource SmtFont}"/>
             <Setter Property="Padding" Value="0"/>
             <Setter Property="Template">
                 <Setter.Value>
@@ -92,7 +92,7 @@
                                    TextDecorations="Underline"/>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Tb" Property="Foreground" Value="{StaticResource SmtAccent}"/>
+                                <Setter TargetName="Tb" Property="Foreground" Value="{DynamicResource SmtAccent}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>

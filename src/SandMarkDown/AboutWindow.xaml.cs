@@ -76,7 +76,9 @@ public partial class AboutWindow : Window
             var environment = await CoreWebView2Environment.CreateAsync(null, App.WebViewDataFolder);
             await Page.EnsureCoreWebView2Async(environment);
             var report = _report with { WebView2 = environment.BrowserVersionString };
-            var about = AboutPage.Build(report, LogoDataUri());
+            var dark = ViewSettings.Load(App.ViewSettingsPath).DarkMode;
+            Page.DefaultBackgroundColor = App.PageColor(dark);
+            var about = AboutPage.Build(report, LogoDataUri(), dark);
             _html = about.Html;
             _policy = about.ContentSecurityPolicy;
 
