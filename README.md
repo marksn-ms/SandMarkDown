@@ -45,7 +45,9 @@ SandMarkDown.exe "C:\notes\readme.md"
 
 The status bar shows the open file path. Ctrl+F finds text on the page. F3 moves to the next match. Alt+Left and Alt+Right move through files opened in this window, including a file you closed. Ctrl+mouse wheel, Ctrl+Plus, and Ctrl+Minus change the reading size. Ctrl+0 returns to actual size. The same commands are under View. The reading size is remembered. Links to other Markdown files open in this window. Web links open in the browser.
 
-When a file has more than one heading, those headings stay beside the page so you can jump.
+When a file has more than one heading, those headings stay beside the page so you can jump. View, Sidebar turns that list on and off.
+
+View, Preview shows a miniature of the whole file on the right edge. Hover it to see the part in view, and click or drag it to move. View, Dark mode is on by default. Turn it off for the light Sandmark palette. These choices are remembered.
 
 When you save the open file in another program, the page updates and keeps its place. File, Print (Ctrl+P) prints in dark text on white. The window opens where you left it.
 

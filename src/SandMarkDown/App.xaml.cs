@@ -25,6 +25,56 @@ public partial class App : Application
 
     private bool _reportingError;
 
+    // Window brush colors from docs/tokens.css, dark then light.
+    private static readonly (string Key, string Dark, string Light)[] Palette =
+    [
+        ("SmtPage", "#101418", "#F6F5F2"),
+        ("SmtInk", "#E7EEF3", "#1C2430"),
+        ("SmtMuted", "#9AA6B2", "#5C6774"),
+        ("SmtSurface", "#1A2129", "#FFFFFF"),
+        ("SmtLine", "#2C3642", "#D9DDE3"),
+        ("SmtAccent", "#8EC0E0", "#1F5678"),
+        ("SmtAccentInk", "#8EC0E0", "#163E58"),
+        ("SmtOnAccent", "#101418", "#FFFFFF"),
+        ("SmtDanger", "#F0A8A8", "#9B2C2C"),
+        ("AccentBrushHover", "#A9D0E8", "#163E58"),
+    ];
+
+    /// <summary>
+    /// Settings file for the View menu.
+    /// </summary>
+    internal static string ViewSettingsPath { get; } = Path.Combine(DataFolder, "view.json");
+
+    /// <summary>
+    /// Switches window chrome and brushes between the dark and light Sandmark palettes.
+    /// </summary>
+    /// <param name="dark">True for the dark palette.</param>
+    internal static void ApplyTheme(bool dark)
+    {
+        if (Current is not App app)
+        {
+            return;
+        }
+
+        // WPF0001: ThemeMode is marked experimental. It is suppressed in the project file.
+        app.ThemeMode = dark ? ThemeMode.Dark : ThemeMode.Light;
+        foreach (var (key, darkColor, lightColor) in Palette)
+        {
+            var color = (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(dark ? darkColor : lightColor);
+            var brush = new System.Windows.Media.SolidColorBrush(color);
+            brush.Freeze();
+            app.Resources[key] = brush;
+        }
+    }
+
+    /// <summary>
+    /// The page background for the current palette, for WebView2's first paint.
+    /// </summary>
+    /// <param name="dark">True for the dark palette.</param>
+    /// <returns>The page color.</returns>
+    internal static System.Drawing.Color PageColor(bool dark) =>
+        dark ? System.Drawing.Color.FromArgb(0x10, 0x14, 0x18) : System.Drawing.Color.FromArgb(0xF6, 0xF5, 0xF2);
+
     /// <summary>
     /// Applies the Sandmark dark theme and opens a file path passed on the command line.
     /// </summary>
@@ -35,9 +85,8 @@ public partial class App : Application
         AppDomain.CurrentDomain.UnhandledException += OnDomainUnhandledException;
         TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
 
-        // Dark chrome for menus and dialogs. WPF0001 is suppressed in the project file.
-        ThemeMode = ThemeMode.Dark;
         base.OnStartup(e);
+        ApplyTheme(ViewSettings.Load(ViewSettingsPath).DarkMode);
 
         var window = new MainWindow();
         MainWindow = window;

@@ -47,8 +47,9 @@ public static partial class AboutPage
     /// </summary>
     /// <param name="report">Version details shown and copied.</param>
     /// <param name="logoDataUri">The Sandmark logo as a <c>data:</c> URI.</param>
+    /// <param name="darkMode">True for the dark palette, false for light.</param>
     /// <returns>A page with its Content Security Policy.</returns>
-    public static RenderedDocument Build(DiagnosticReport report, string logoDataUri)
+    public static RenderedDocument Build(DiagnosticReport report, string logoDataUri, bool darkMode = true)
     {
         ArgumentNullException.ThrowIfNull(report);
         ArgumentException.ThrowIfNullOrWhiteSpace(logoDataUri);
@@ -77,6 +78,7 @@ public static partial class AboutPage
         var html = Template
             .Replace("@@CSP@@", WebUtility.HtmlEncode(policy.Header), StringComparison.Ordinal)
             .Replace("@@NONCE@@", policy.Nonce, StringComparison.Ordinal)
+            .Replace("@@THEME@@", darkMode ? "dark" : "light", StringComparison.Ordinal)
             .Replace("@@TOKENS@@", MarkdownHtmlRenderer.TokensCss, StringComparison.Ordinal)
             .Replace("@@TITLE@@", WebUtility.HtmlEncode($"About {Branding.ProductName}"), StringComparison.Ordinal)
             .Replace("@@LOGO@@", WebUtility.HtmlEncode(logoDataUri), StringComparison.Ordinal)
@@ -152,7 +154,7 @@ public static partial class AboutPage
 
     private const string Template = """
         <!DOCTYPE html>
-        <html lang="en" data-theme="dark">
+        <html lang="en" data-theme="@@THEME@@">
         <head>
         <meta charset="utf-8">
         <meta http-equiv="Content-Security-Policy" content="@@CSP@@">
@@ -293,7 +295,8 @@ public static partial class AboutPage
         }
         button:hover { border-color: var(--smt-accent); color: var(--smt-accent); }
         button.primary { background: var(--smt-accent); color: var(--smt-on-accent); border-color: var(--smt-accent); }
-        button.primary:hover { background: #a9d0e8; color: var(--smt-on-accent); }
+        button.primary:hover { filter: brightness(1.1); color: var(--smt-on-accent); }
+        :root[data-theme="light"] .plate { box-shadow: 0 0.35rem 1rem rgb(28 36 48 / 0.12); }
         button:focus-visible, a:focus-visible { outline: 2px solid var(--smt-focus); outline-offset: 2px; }
         .icon-button { padding: 0.4rem 0.6rem; }
 

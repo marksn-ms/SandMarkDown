@@ -31,6 +31,7 @@ public partial class MainWindow : Window
     private string _html = string.Empty;
     private string _contentSecurityPolicy = string.Empty;
     private double _zoom = ZoomMath.Actual;
+    private ViewSettings _view = ViewSettings.Load(App.ViewSettingsPath);
     private bool _webReady;
     private long _lastTravelMs;
 
@@ -44,6 +45,10 @@ public partial class MainWindow : Window
         _zoom = ZoomPreferences.Load(ZoomSettingsPath);
         ZoomText.Text = ZoomMath.FormatPercent(_zoom);
         RestorePlacement();
+        PreviewMenuItem.IsChecked = _view.ShowPreview;
+        SidebarMenuItem.IsChecked = _view.ShowSidebar;
+        DarkModeMenuItem.IsChecked = _view.DarkMode;
+        Viewer.DefaultBackgroundColor = App.PageColor(_view.DarkMode);
         _reloadTimer.Tick += OnReloadTimerTick;
         Closing += (_, _) => SavePlacement();
         Closed += (_, _) => StopWatching();
@@ -77,7 +82,8 @@ public partial class MainWindow : Window
             var rendered = MarkdownHtmlRenderer.Render(
                 markdown,
                 fullPath,
-                showRemoteImages: _remoteImagesShown.Contains(fullPath));
+                showRemoteImages: _remoteImagesShown.Contains(fullPath),
+                view: _view);
             _documentPath = fullPath;
             _pendingFragment = string.IsNullOrEmpty(fragment) ? null : fragment;
             CloseMenuItem.IsEnabled = true;
@@ -277,7 +283,7 @@ public partial class MainWindow : Window
             }
             else if (_documentPath is null)
             {
-                ShowRendered(MarkdownHtmlRenderer.Welcome());
+                ShowRendered(MarkdownHtmlRenderer.Welcome(_view));
                 StatusText.Text = "No file open";
             }
         }
@@ -592,7 +598,7 @@ public partial class MainWindow : Window
         CloseMenuItem.IsEnabled = false;
         StatusText.Text = "No file open";
         Title = Branding.ProductName + Branding.ProductTitleSuffix;
-        ShowRendered(MarkdownHtmlRenderer.Welcome());
+        ShowRendered(MarkdownHtmlRenderer.Welcome(_view));
     }
 
     private void GoBack()
@@ -749,6 +755,42 @@ public partial class MainWindow : Window
     private void OnForwardClick(object sender, RoutedEventArgs e) => GoForward();
 
     private void OnFindClick(object sender, RoutedEventArgs e) => OpenFind();
+
+    private void OnViewOptionClick(object sender, RoutedEventArgs e)
+    {
+        var next = _view with
+        {
+            ShowPreview = PreviewMenuItem.IsChecked,
+            ShowSidebar = SidebarMenuItem.IsChecked,
+            DarkMode = DarkModeMenuItem.IsChecked
+        };
+        ApplyView(next);
+    }
+
+    private void ApplyView(ViewSettings next)
+    {
+        var themeChanged = next.DarkMode != _view.DarkMode;
+        _view = next;
+        if (themeChanged)
+        {
+            App.ApplyTheme(next.DarkMode);
+            Viewer.DefaultBackgroundColor = App.PageColor(next.DarkMode);
+        }
+
+        try
+        {
+            next.Save(App.ViewSettingsPath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // The change still applies to this session.
+        }
+
+        if (_webReady && Viewer.CoreWebView2 is not null)
+        {
+            _ = Viewer.CoreWebView2.ExecuteScriptAsync($"window.smtView && window.smtView.apply({next.ToPageJson()})");
+        }
+    }
 
     private void OnZoomInClick(object sender, RoutedEventArgs e) => SetZoom(ZoomMath.ZoomIn(_zoom));
 

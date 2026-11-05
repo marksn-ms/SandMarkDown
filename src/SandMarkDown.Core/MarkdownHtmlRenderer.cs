@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -8,8 +9,9 @@ using Markdig;
 namespace SandMarkDown.Core;
 
 /// <summary>
-/// Renders Markdown to a dark-theme HTML page the viewer can display offline.
-/// The page can find text, list headings when the file has several, and color fenced code.
+/// Renders Markdown to a dark or light HTML page the viewer can display offline.
+/// The page can find text, list headings when the file has several, color fenced code,
+/// and show a miniature of the whole document for scrolling.
 /// </summary>
 public static partial class MarkdownHtmlRenderer
 {
@@ -45,7 +47,11 @@ public static partial class MarkdownHtmlRenderer
     /// </summary>
     internal static string ToHtmlFragment(string markdown) => Markdown.ToHtml(markdown, Pipeline);
 
-    private static readonly HtmlFormatter CodeFormatter = new(StyleDictionary.DefaultDark);
+    // Code is marked with ColorCode class names. CodeCss colors them for whichever theme is active.
+    private static readonly HtmlClassFormatter CodeFormatter = new(StyleDictionary.DefaultDark);
+
+    private static readonly string CodeCss = CodeThemeCss("dark", StyleDictionary.DefaultDark)
+        + CodeThemeCss("light", StyleDictionary.DefaultLight);
 
     /// <summary>
     /// Renders <paramref name="markdown"/> as HTML with local links rewritten for the viewer.
@@ -56,8 +62,13 @@ public static partial class MarkdownHtmlRenderer
     /// <param name="showRemoteImages">
     /// When <see langword="false"/>, images hosted on the web are hidden until the reader asks for them.
     /// </param>
+    /// <param name="view">Theme, sidebar, and preview choices. <see langword="null"/> uses the defaults.</param>
     /// <returns>The HTML page and the local files it is allowed to request.</returns>
-    public static RenderedDocument Render(string markdown, string documentPath, bool showRemoteImages = false)
+    public static RenderedDocument Render(
+        string markdown,
+        string documentPath,
+        bool showRemoteImages = false,
+        ViewSettings? view = null)
     {
         ArgumentNullException.ThrowIfNull(markdown);
         ArgumentException.ThrowIfNullOrWhiteSpace(documentPath);
@@ -88,7 +99,7 @@ public static partial class MarkdownHtmlRenderer
         var title = Path.GetFileName(fullDocument);
         var policy = ContentSecurityPolicy.Create(showRemoteImages);
         return new RenderedDocument(
-            Wrap(notice + body, title, BuildOutline(body), policy),
+            Wrap(notice + body, title, BuildOutline(body), policy, view ?? ViewSettings.Default, MinimapMarkup),
             resources,
             fullDocument,
             policy.Header,
@@ -98,8 +109,9 @@ public static partial class MarkdownHtmlRenderer
     /// <summary>
     /// Builds the page shown when no file is open.
     /// </summary>
+    /// <param name="view">Theme, sidebar, and preview choices. <see langword="null"/> uses the defaults.</param>
     /// <returns>A branded welcome page with no local file resources.</returns>
-    public static RenderedDocument Welcome()
+    public static RenderedDocument Welcome(ViewSettings? view = null)
     {
         var body = $"""
             <h1>{WebUtility.HtmlEncode(Branding.ProductName)}</h1>
@@ -109,11 +121,58 @@ public static partial class MarkdownHtmlRenderer
         var resources = new Dictionary<string, string>(StringComparer.Ordinal);
         var policy = ContentSecurityPolicy.Create(showRemoteImages: false);
         return new RenderedDocument(
-            Wrap(body, Branding.ProductName, string.Empty, policy),
+            Wrap(body, Branding.ProductName, string.Empty, policy, view ?? ViewSettings.Default, minimap: string.Empty),
             resources,
             null,
             policy.Header,
             hiddenRemoteImages: 0);
+    }
+
+    private const string MinimapMarkup = """
+        <div id="smt-minimap" class="smt-minimap" aria-hidden="true" title="Click or drag to scroll">
+        <div class="smt-minimap-content"></div>
+        <div class="smt-minimap-slider"></div>
+        </div>
+        """;
+
+    private static string CodeThemeCss(string theme, StyleDictionary styles)
+    {
+        var builder = new StringBuilder();
+        foreach (var style in styles)
+        {
+            if (string.IsNullOrEmpty(style.ReferenceName)
+                || style.ReferenceName == "plainText"
+                || CssColor(style.Foreground) is not string color)
+            {
+                continue;
+            }
+
+            builder.Append(CultureInfo.InvariantCulture, $":root[data-theme=\"{theme}\"] .smt-prose pre .{style.ReferenceName}{{color:{color};");
+            if (style.Bold)
+            {
+                builder.Append("font-weight:700;");
+            }
+
+            if (style.Italic)
+            {
+                builder.Append("font-style:italic;");
+            }
+
+            builder.Append("}\n");
+        }
+
+        return builder.ToString();
+    }
+
+    // ColorCode stores colors as #AARRGGBB. CSS reads eight digits as #RRGGBBAA, so drop the alpha.
+    private static string? CssColor(string? argb)
+    {
+        if (string.IsNullOrEmpty(argb) || argb[0] != '#')
+        {
+            return null;
+        }
+
+        return argb.Length == 9 ? "#" + argb[3..] : argb;
     }
 
     private sealed class UrlContext(
@@ -295,11 +354,22 @@ public static partial class MarkdownHtmlRenderer
         return encoded.TrimEnd('=').Replace('+', '-').Replace('/', '_');
     }
 
-    private static string Wrap(string body, string title, string outline, ContentSecurityPolicy policy)
+    private static string Wrap(
+        string body,
+        string title,
+        string outline,
+        ContentSecurityPolicy policy,
+        ViewSettings view,
+        string minimap)
     {
         var page = PageTemplate
             .Replace("@@CSP@@", WebUtility.HtmlEncode(policy.Header), StringComparison.Ordinal)
             .Replace("@@NONCE@@", policy.Nonce, StringComparison.Ordinal)
+            .Replace("@@THEME@@", view.Theme, StringComparison.Ordinal)
+            .Replace("@@SIDEBAR@@", view.ShowSidebar ? "on" : "off", StringComparison.Ordinal)
+            .Replace("@@PREVIEW@@", view.ShowPreview && minimap.Length > 0 ? "on" : "off", StringComparison.Ordinal)
+            .Replace("@@MINIMAP@@", minimap, StringComparison.Ordinal)
+            .Replace("@@CODECSS@@", CodeCss, StringComparison.Ordinal)
             .Replace("@@TITLE@@", WebUtility.HtmlEncode(title), StringComparison.Ordinal)
             .Replace("@@TOKENS@@", TokensCss, StringComparison.Ordinal);
 
@@ -389,7 +459,7 @@ public static partial class MarkdownHtmlRenderer
 
     private const string PageTemplate = """
         <!DOCTYPE html>
-        <html lang="en" data-theme="dark">
+        <html lang="en" data-theme="@@THEME@@" data-sidebar="@@SIDEBAR@@" data-preview="@@PREVIEW@@">
         <head>
         <meta charset="utf-8">
         <meta http-equiv="Content-Security-Policy" content="@@CSP@@">
@@ -399,10 +469,65 @@ public static partial class MarkdownHtmlRenderer
         <title>@@TITLE@@</title>
         <style>
         @@TOKENS@@
-        html[data-theme="dark"], html[data-theme="dark"] body {
+        @@CODECSS@@
+        html, body {
           background: var(--smt-page);
           color: var(--smt-ink);
         }
+        html {
+          --smt-map-w: 7.5rem;
+          scrollbar-color: color-mix(in srgb, var(--smt-muted) 45%, transparent) transparent;
+        }
+        html.smt-map-hover {
+          scrollbar-color: var(--smt-accent) color-mix(in srgb, var(--smt-accent) 14%, transparent);
+        }
+        html[data-sidebar="off"] .smt-outline { display: none; }
+        html[data-preview="on"] body:has(> .smt-minimap) { padding-right: calc(var(--smt-map-w) + 1.25rem); }
+        html[data-preview="off"] .smt-minimap { display: none; }
+        html[data-preview="on"] body:has(> .smt-minimap) .smt-find { right: calc(var(--smt-map-w) + 1.75rem); }
+        .smt-minimap {
+          position: fixed;
+          top: 0.75rem;
+          right: 0.9rem;
+          bottom: 0.75rem;
+          width: var(--smt-map-w);
+          overflow: hidden;
+          z-index: 1;
+          border-radius: var(--smt-radius);
+          background: color-mix(in srgb, var(--smt-surface) 55%, transparent);
+          box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--smt-line) 70%, transparent);
+          cursor: pointer;
+          user-select: none;
+          touch-action: none;
+        }
+        .smt-minimap-content {
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          opacity: 0.85;
+        }
+        .smt-minimap-content > .smt-prose {
+          position: absolute;
+          top: 0;
+          left: 0;
+          margin: 0;
+          max-width: none;
+          transform-origin: 0 0;
+        }
+        .smt-minimap-slider {
+          position: absolute;
+          left: 0;
+          right: 0;
+          min-height: 6px;
+          border-radius: 3px;
+          background: color-mix(in srgb, var(--smt-ink) 12%, transparent);
+          box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--smt-accent) 55%, transparent);
+          opacity: 0;
+          transition: opacity 120ms ease;
+          pointer-events: none;
+        }
+        .smt-minimap:hover .smt-minimap-slider,
+        .smt-minimap.smt-dragging .smt-minimap-slider { opacity: 1; }
         ::selection {
           background: var(--smt-accent);
           color: var(--smt-on-accent);
@@ -645,7 +770,7 @@ public static partial class MarkdownHtmlRenderer
           color: var(--smt-on-accent);
         }
         @media (min-width: 960px) {
-          .smt-main:has(.smt-outline) {
+          html[data-sidebar="on"] .smt-main:has(.smt-outline) {
             width: min(100% - (2 * var(--smt-page-pad)), 76rem);
             grid-template-columns: minmax(0, 1fr) 15rem;
           }
@@ -665,7 +790,8 @@ public static partial class MarkdownHtmlRenderer
             --smt-accent-ink: #163e58;
             color-scheme: light;
           }
-          .smt-outline, .smt-find, .smt-remote, .smt-prose img[data-smt-remote-src] { display: none !important; }
+          .smt-outline, .smt-find, .smt-remote, .smt-minimap, .smt-prose img[data-smt-remote-src] { display: none !important; }
+          html[data-preview="on"] body:has(> .smt-minimap) { padding-right: 0; }
           body:has(.smt-find:not([hidden])) .smt-main,
           .smt-main { display: block; width: auto; padding: 0; }
           .smt-prose pre span { color: inherit !important; }
@@ -692,6 +818,7 @@ public static partial class MarkdownHtmlRenderer
         </article>
         @@OUTLINE@@
         </main>
+        @@MINIMAP@@
         <script nonce="@@NONCE@@">
         (function () {
           var find = document.getElementById("smt-find");
@@ -806,6 +933,102 @@ public static partial class MarkdownHtmlRenderer
           if (showRemote) {
             showRemote.addEventListener("click", function () { post({ type: "showRemoteImages" }); });
           }
+          // Preview: a scaled live copy of the article. The slider marks the part in view.
+          // When the copy is taller than the map, it scrolls in proportion, as VS Code's minimap does.
+          var rootEl = document.documentElement;
+          var map = document.getElementById("smt-minimap");
+          var mapLayout = function () {};
+          if (map) {
+            var article = document.querySelector("main > .smt-prose");
+            var mapContent = map.querySelector(".smt-minimap-content");
+            var slider = map.querySelector(".smt-minimap-slider");
+            var copy = article.cloneNode(true);
+            copy.querySelectorAll("[id]").forEach(function (el) { el.removeAttribute("id"); });
+            copy.querySelectorAll(".smt-remote").forEach(function (el) { el.remove(); });
+            copy.setAttribute("inert", "");
+            mapContent.appendChild(copy);
+            var scale = 1, offset = 0, articleTop = 0, frame = 0;
+            var drag = null;
+
+            mapLayout = function () {
+              if (rootEl.dataset.preview !== "on" || !map.clientWidth) return;
+              var width = article.getBoundingClientRect().width;
+              if (!width) return;
+              copy.style.width = width + "px";
+              scale = map.clientWidth / width;
+              articleTop = article.getBoundingClientRect().top + window.scrollY;
+              var contentHeight = article.offsetHeight * scale;
+              var room = Math.max(0, contentHeight - map.clientHeight);
+              var range = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+              offset = room * Math.min(1, window.scrollY / range);
+              copy.style.transform = "translateY(" + (-offset) + "px) scale(" + scale + ")";
+              slider.style.top = ((window.scrollY - articleTop) * scale - offset) + "px";
+              slider.style.height = (window.innerHeight * scale) + "px";
+            };
+            var schedule = function () {
+              if (frame) return;
+              frame = window.requestAnimationFrame(function () { frame = 0; mapLayout(); });
+            };
+
+            // How far the slider moves for each pixel of page scroll, used to make dragging track the pointer.
+            var sliderRate = function () {
+              var range = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+              var room = Math.max(0, article.offsetHeight * scale - map.clientHeight);
+              var rate = scale - room / range;
+              return rate > 0.0001 ? rate : scale;
+            };
+            var centerOn = function (clientY) {
+              var y = clientY - map.getBoundingClientRect().top;
+              var target = articleTop + (y + offset) / scale - window.innerHeight / 2;
+              window.scrollTo({ top: Math.max(0, target), behavior: "auto" });
+            };
+
+            map.addEventListener("pointerenter", function () { rootEl.classList.add("smt-map-hover"); });
+            map.addEventListener("pointerleave", function () {
+              if (!drag) rootEl.classList.remove("smt-map-hover");
+            });
+            map.addEventListener("pointerdown", function (e) {
+              if (e.button !== 0) return;
+              e.preventDefault();
+              var box = slider.getBoundingClientRect();
+              if (e.clientY < box.top || e.clientY > box.bottom) {
+                centerOn(e.clientY);
+              }
+              mapLayout();
+              drag = { y: e.clientY, scroll: window.scrollY, rate: sliderRate() };
+              map.classList.add("smt-dragging");
+              map.setPointerCapture(e.pointerId);
+            });
+            map.addEventListener("pointermove", function (e) {
+              if (!drag) return;
+              window.scrollTo({ top: Math.max(0, drag.scroll + (e.clientY - drag.y) / drag.rate), behavior: "auto" });
+            });
+            var endDrag = function (e) {
+              if (!drag) return;
+              drag = null;
+              map.classList.remove("smt-dragging");
+              if (!map.matches(":hover")) rootEl.classList.remove("smt-map-hover");
+            };
+            map.addEventListener("pointerup", endDrag);
+            map.addEventListener("pointercancel", endDrag);
+
+            window.addEventListener("scroll", schedule, { passive: true });
+            window.addEventListener("resize", schedule);
+            if (window.ResizeObserver) {
+              new ResizeObserver(schedule).observe(article);
+            }
+            schedule();
+          }
+
+          window.smtView = {
+            apply: function (state) {
+              rootEl.dataset.theme = state.dark ? "dark" : "light";
+              rootEl.dataset.sidebar = state.sidebar ? "on" : "off";
+              rootEl.dataset.preview = state.preview && map ? "on" : "off";
+              mapLayout();
+            }
+          };
+
           window.smtFind = {
             open: openFind,
             next: function () { step(1); },
