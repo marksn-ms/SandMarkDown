@@ -19,6 +19,26 @@ public class BrandingTests
         Assert.Contains("Sandmark Technologies", Branding.ProductTitleSuffix, StringComparison.Ordinal);
         Assert.Contains("Sandmark Technologies", Branding.Copyright, StringComparison.Ordinal);
         Assert.False(string.IsNullOrWhiteSpace(Branding.Description));
+        Assert.StartsWith(Branding.WebsiteUrl, Branding.PrivacyUrl, StringComparison.Ordinal);
+        Assert.StartsWith(Branding.WebsiteUrl, Branding.SupportUrl, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The license and third-party notices ship with the app.
+    /// </summary>
+    [Fact]
+    public void License_and_notices_ship_with_the_app()
+    {
+        var root = RepositoryRoot();
+        Assert.Contains("MIT License", File.ReadAllText(Path.Combine(root, "LICENSE")), StringComparison.Ordinal);
+        var notices = File.ReadAllText(Path.Combine(root, "THIRD-PARTY-NOTICES.txt"));
+        foreach (var (name, _, _) in AboutPage.Credits)
+        {
+            Assert.Contains(name, notices, StringComparison.Ordinal);
+        }
+
+        var csproj = File.ReadAllText(Path.Combine(root, "src", "SandMarkDown", "SandMarkDown.csproj"));
+        Assert.Contains("THIRD-PARTY-NOTICES.txt", csproj, StringComparison.Ordinal);
     }
 
     /// <summary>

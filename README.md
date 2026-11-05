@@ -39,4 +39,16 @@ The status bar shows the open file path. Ctrl+F finds text on the page. F3 moves
 
 When a file has more than one heading, those headings stay beside the page so you can jump.
 
-Double-click a `.md` file to open it when SandMarkDown is the default app for Markdown files. 
+When you save the open file in another program, the page updates and keeps its place. File, Print (Ctrl+P) prints in dark text on white. The window opens where you left it.
+
+Double-click a `.md` file to open it when SandMarkDown is the default app for Markdown files.
+
+## Privacy and safety
+
+SandMarkDown has no accounts and sends no telemetry. A Markdown file cannot run script. Images from the web stay hidden until you choose Show images for that file. Links open only when you click them, and a link to a program shows it in File Explorer instead of running it.
+
+Unexpected errors are written to `%LOCALAPPDATA%\Sandmark Technologies\SandMarkDown\logs\error.log` on this PC. Nothing is sent anywhere.
+
+## License
+
+SandMarkDown is released under the [MIT License](LICENSE). Libraries it uses are listed in [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt).

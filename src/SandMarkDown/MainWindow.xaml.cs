@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Threading;
 using Microsoft.Web.WebView2.Core;
 using SandMarkDown.Core;
 
@@ -14,12 +15,13 @@ namespace SandMarkDown;
 /// </summary>
 public partial class MainWindow : Window
 {
-    private static readonly string ZoomSettingsPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "Sandmark Technologies",
-        "SandMarkDown",
-        "zoom.json");
+    private static readonly string ZoomSettingsPath = Path.Combine(App.DataFolder, "zoom.json");
+    private static readonly string PlacementPath = Path.Combine(App.DataFolder, "window.json");
 
+    private readonly DispatcherTimer _reloadTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
+    private FileSystemWatcher? _watcher;
+    private int _reloadAttempts;
+    private double? _pendingScroll;
     private readonly Dictionary<string, string> _resources = new(StringComparer.Ordinal);
     private readonly HashSet<string> _remoteImagesShown = new(StringComparer.OrdinalIgnoreCase);
     private readonly ReadingHistory _history = new();
@@ -41,6 +43,10 @@ public partial class MainWindow : Window
         Title = Branding.ProductName + Branding.ProductTitleSuffix;
         _zoom = ZoomPreferences.Load(ZoomSettingsPath);
         ZoomText.Text = ZoomMath.FormatPercent(_zoom);
+        RestorePlacement();
+        _reloadTimer.Tick += OnReloadTimerTick;
+        Closing += (_, _) => SavePlacement();
+        Closed += (_, _) => StopWatching();
     }
 
     /// <summary>
@@ -52,14 +58,18 @@ public partial class MainWindow : Window
         OpenDocument(path, fragment: null, recordHistory: true);
     }
 
-    private bool OpenDocument(string path, string? fragment, bool recordHistory)
+    private bool OpenDocument(string path, string? fragment, bool recordHistory, bool quiet = false)
     {
         try
         {
             var fullPath = Path.GetFullPath(path);
             if (!File.Exists(fullPath))
             {
-                ShowError($"File not found:\n{fullPath}");
+                if (!quiet)
+                {
+                    ShowError($"File not found:\n{fullPath}");
+                }
+
                 return false;
             }
 
@@ -74,6 +84,7 @@ public partial class MainWindow : Window
             StatusText.Text = fullPath;
             Title = $"{Path.GetFileName(fullPath)} - {Branding.ProductName}{Branding.ProductTitleSuffix}";
             ShowRendered(rendered);
+            WatchFile(fullPath);
             if (recordHistory)
             {
                 _history.Record(fullPath, fragment);
@@ -84,8 +95,162 @@ public partial class MainWindow : Window
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            ShowError(ex.Message);
+            if (!quiet)
+            {
+                ShowError(ex.Message);
+            }
+
             return false;
+        }
+    }
+
+    // Editors often save by writing a temp file and renaming it, so changes, creates, and renames all count.
+    private void WatchFile(string fullPath)
+    {
+        var directory = Path.GetDirectoryName(fullPath);
+        if (_watcher is not null
+            && string.Equals(_watcher.Path, directory, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(_watcher.Filter, Path.GetFileName(fullPath), StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        StopWatching();
+        if (string.IsNullOrEmpty(directory))
+        {
+            return;
+        }
+
+        try
+        {
+            var watcher = new FileSystemWatcher(directory, Path.GetFileName(fullPath))
+            {
+                NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.FileName | NotifyFilters.CreationTime
+            };
+            watcher.Changed += OnWatchedFileChanged;
+            watcher.Created += OnWatchedFileChanged;
+            watcher.Renamed += OnWatchedFileChanged;
+            watcher.EnableRaisingEvents = true;
+            _watcher = watcher;
+        }
+        catch (Exception ex) when (ex is IOException or ArgumentException or UnauthorizedAccessException)
+        {
+            // Some network locations cannot be watched. The file still reads normally.
+        }
+    }
+
+    private void StopWatching()
+    {
+        _reloadTimer.Stop();
+        if (_watcher is null)
+        {
+            return;
+        }
+
+        _watcher.EnableRaisingEvents = false;
+        _watcher.Dispose();
+        _watcher = null;
+    }
+
+    private void OnWatchedFileChanged(object sender, FileSystemEventArgs e)
+    {
+        Dispatcher.BeginInvoke(() =>
+        {
+            _reloadAttempts = 0;
+            _reloadTimer.Stop();
+            _reloadTimer.Start();
+        });
+    }
+
+    private async void OnReloadTimerTick(object? sender, EventArgs e)
+    {
+        _reloadTimer.Stop();
+        if (_documentPath is not { } path)
+        {
+            return;
+        }
+
+        if (!File.Exists(path))
+        {
+            StatusText.Text = $"{path} was moved or deleted. Showing the last version read.";
+            return;
+        }
+
+        _pendingScroll = await ReadScrollAsync();
+        if (OpenDocument(path, fragment: null, recordHistory: false, quiet: true))
+        {
+            StatusText.Text = $"{path}  ·  Updated {DateTime.Now:t}";
+            return;
+        }
+
+        // The editor may still be writing. Try a few more times before giving up quietly.
+        _pendingScroll = null;
+        if (++_reloadAttempts < 4)
+        {
+            _reloadTimer.Start();
+        }
+    }
+
+    private async Task<double?> ReadScrollAsync()
+    {
+        if (!_webReady || Viewer.CoreWebView2 is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            var result = await Viewer.CoreWebView2.ExecuteScriptAsync("window.scrollY");
+            return double.TryParse(result, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var y) ? y : null;
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
+    private void RestorePlacement()
+    {
+        var saved = WindowPlacement.Load(PlacementPath);
+        if (saved is null)
+        {
+            return;
+        }
+
+        var fitted = saved.FitTo(
+            SystemParameters.VirtualScreenLeft,
+            SystemParameters.VirtualScreenTop,
+            SystemParameters.VirtualScreenWidth,
+            SystemParameters.VirtualScreenHeight,
+            MinWidth,
+            MinHeight);
+        WindowStartupLocation = WindowStartupLocation.Manual;
+        Left = fitted.Left;
+        Top = fitted.Top;
+        Width = fitted.Width;
+        Height = fitted.Height;
+        if (fitted.IsMaximized)
+        {
+            WindowState = WindowState.Maximized;
+        }
+    }
+
+    private void SavePlacement()
+    {
+        var bounds = WindowState == WindowState.Normal ? new Rect(Left, Top, Width, Height) : RestoreBounds;
+        if (bounds.IsEmpty)
+        {
+            return;
+        }
+
+        try
+        {
+            new WindowPlacement(bounds.Left, bounds.Top, bounds.Width, bounds.Height, WindowState == WindowState.Maximized)
+                .Save(PlacementPath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // The window opens centered next time instead.
         }
     }
 
@@ -98,12 +263,7 @@ public partial class MainWindow : Window
     {
         try
         {
-            var userData = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "Sandmark Technologies",
-                "SandMarkDown",
-                "WebView2");
-            var environment = await CoreWebView2Environment.CreateAsync(null, userData);
+            var environment = await CoreWebView2Environment.CreateAsync(null, App.WebViewDataFolder);
             await Viewer.EnsureCoreWebView2Async(environment);
             ConfigureViewer();
             _webReady = true;
@@ -279,7 +439,20 @@ public partial class MainWindow : Window
 
     private async void OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
     {
-        if (!e.IsSuccess || string.IsNullOrEmpty(_pendingFragment) || Viewer.CoreWebView2 is null)
+        if (!e.IsSuccess || Viewer.CoreWebView2 is null)
+        {
+            return;
+        }
+
+        if (_pendingScroll is double y)
+        {
+            _pendingScroll = null;
+            var top = y.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            await Viewer.CoreWebView2.ExecuteScriptAsync($"window.scrollTo(0, {top});");
+            return;
+        }
+
+        if (string.IsNullOrEmpty(_pendingFragment))
         {
             return;
         }
@@ -287,6 +460,16 @@ public partial class MainWindow : Window
         var fragment = JsonSerializer.Serialize(_pendingFragment);
         _pendingFragment = null;
         await Viewer.CoreWebView2.ExecuteScriptAsync($"location.hash = {fragment};");
+    }
+
+    private void PrintDocument()
+    {
+        if (!_webReady || Viewer.CoreWebView2 is null)
+        {
+            return;
+        }
+
+        Viewer.CoreWebView2.ShowPrintUI(CoreWebView2PrintDialogKind.Browser);
     }
 
     private void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
@@ -325,6 +508,9 @@ public partial class MainWindow : Window
                     break;
                 case "showRemoteImages":
                     ShowRemoteImages();
+                    break;
+                case "print":
+                    PrintDocument();
                     break;
             }
         }
@@ -399,8 +585,10 @@ public partial class MainWindow : Window
 
     private void ShowWelcome()
     {
+        StopWatching();
         _documentPath = null;
         _pendingFragment = null;
+        _pendingScroll = null;
         CloseMenuItem.IsEnabled = false;
         StatusText.Text = "No file open";
         Title = Branding.ProductName + Branding.ProductTitleSuffix;
@@ -552,6 +740,8 @@ public partial class MainWindow : Window
 
     private void OnCloseClick(object sender, RoutedEventArgs e) => CloseDocument();
 
+    private void OnPrintClick(object sender, RoutedEventArgs e) => PrintDocument();
+
     private void OnExitClick(object sender, RoutedEventArgs e) => Application.Current.Shutdown();
 
     private void OnBackClick(object sender, RoutedEventArgs e) => GoBack();
@@ -616,6 +806,10 @@ public partial class MainWindow : Window
                 break;
             case Key.O:
                 ShowOpenDialog();
+                e.Handled = true;
+                break;
+            case Key.P:
+                PrintDocument();
                 e.Handled = true;
                 break;
             case Key.W:
