@@ -41,6 +41,39 @@ public class PackagingTests
         Assert.True(File.Exists(Path.Combine(root, "Assets", "Square44x44Logo.targetsize-256.png")));
     }
 
+    /// <summary>
+    /// The publisher in StoreIdentity.json hashes to the package family name Partner Center assigned,
+    /// so a typo in the publisher fails here instead of at upload.
+    /// </summary>
+    [Fact]
+    public void Store_identity_matches_the_package_family_name()
+    {
+        var path = Path.Combine(RepositoryRoot(), "packaging", "StoreIdentity.json");
+        using var json = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path));
+        var root = json.RootElement;
+        var name = root.GetProperty("identityName").GetString()!;
+        var publisher = root.GetProperty("publisher").GetString()!;
+        var family = root.GetProperty("packageFamilyName").GetString()!;
+
+        Assert.Equal(family, $"{name}_{PublisherId(publisher)}");
+        Assert.Equal("Sandmark Technologies, LLC", root.GetProperty("publisherDisplayName").GetString());
+    }
+
+    // Windows' publisher ID: the first 8 bytes of SHA-256 over the UTF-16 publisher, in 5-bit groups.
+    private static string PublisherId(string publisher)
+    {
+        const string alphabet = "0123456789abcdefghjkmnpqrstvwxyz";
+        var hash = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.Unicode.GetBytes(publisher));
+        var bits = string.Concat(hash.Take(8).Select(b => Convert.ToString(b, 2).PadLeft(8, '0'))) + "0";
+        var id = new System.Text.StringBuilder();
+        for (var i = 0; i < bits.Length; i += 5)
+        {
+            id.Append(alphabet[Convert.ToInt32(bits.Substring(i, 5), 2)]);
+        }
+
+        return id.ToString();
+    }
+
     private static string RepositoryRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
