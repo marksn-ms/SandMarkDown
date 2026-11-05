@@ -8,8 +8,25 @@ namespace SandMarkDown.Core;
 /// <param name="ShowPreview">Show the miniature document on the right edge.</param>
 /// <param name="ShowSidebar">Show the heading list beside the page.</param>
 /// <param name="DarkMode">Use the dark Sandmark palette. Light is used when off.</param>
-public sealed record ViewSettings(bool ShowPreview = true, bool ShowSidebar = true, bool DarkMode = true)
+/// <param name="ShowExplorer">Show the folder Explorer on the left.</param>
+/// <param name="ExplorerWidth">Explorer width in device-independent pixels.</param>
+public sealed record ViewSettings(
+    bool ShowPreview = true,
+    bool ShowSidebar = true,
+    bool DarkMode = true,
+    bool ShowExplorer = false,
+    double ExplorerWidth = 260)
 {
+    /// <summary>
+    /// Narrowest the Explorer may be.
+    /// </summary>
+    public const double MinExplorerWidth = 160;
+
+    /// <summary>
+    /// Widest the Explorer may be.
+    /// </summary>
+    public const double MaxExplorerWidth = 600;
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -37,7 +54,9 @@ public sealed record ViewSettings(bool ShowPreview = true, bool ShowSidebar = tr
 
         try
         {
-            return JsonSerializer.Deserialize<ViewSettings>(File.ReadAllText(path), JsonOptions) ?? Default;
+            var settings = JsonSerializer.Deserialize<ViewSettings>(File.ReadAllText(path), JsonOptions) ?? Default;
+            var width = double.IsFinite(settings.ExplorerWidth) ? settings.ExplorerWidth : Default.ExplorerWidth;
+            return settings with { ExplorerWidth = Math.Clamp(width, MinExplorerWidth, MaxExplorerWidth) };
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {

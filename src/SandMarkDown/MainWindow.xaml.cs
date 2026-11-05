@@ -49,6 +49,7 @@ public partial class MainWindow : Window
         SidebarMenuItem.IsChecked = _view.ShowSidebar;
         DarkModeMenuItem.IsChecked = _view.DarkMode;
         Viewer.DefaultBackgroundColor = App.PageColor(_view.DarkMode);
+        InitializeFilesUi();
         _reloadTimer.Tick += OnReloadTimerTick;
         Closing += (_, _) => SavePlacement();
         Closed += (_, _) => StopWatching();
@@ -91,6 +92,12 @@ public partial class MainWindow : Window
             Title = $"{Path.GetFileName(fullPath)} - {Branding.ProductName}{Branding.ProductTitleSuffix}";
             ShowRendered(rendered);
             WatchFile(fullPath);
+            if (!quiet)
+            {
+                RememberRecent(fullPath);
+                FollowDocumentInExplorer(fullPath);
+            }
+
             if (recordHistory)
             {
                 _history.Record(fullPath, fragment);
@@ -518,6 +525,9 @@ public partial class MainWindow : Window
                 case "print":
                     PrintDocument();
                     break;
+                case "toggleExplorer":
+                    ToggleExplorer();
+                    break;
             }
         }
         catch (JsonException)
@@ -762,7 +772,8 @@ public partial class MainWindow : Window
         {
             ShowPreview = PreviewMenuItem.IsChecked,
             ShowSidebar = SidebarMenuItem.IsChecked,
-            DarkMode = DarkModeMenuItem.IsChecked
+            DarkMode = DarkModeMenuItem.IsChecked,
+            ShowExplorer = ExplorerMenuItem.IsChecked
         };
         ApplyView(next);
     }
@@ -770,6 +781,7 @@ public partial class MainWindow : Window
     private void ApplyView(ViewSettings next)
     {
         var themeChanged = next.DarkMode != _view.DarkMode;
+        var explorerChanged = next.ShowExplorer != _view.ShowExplorer;
         _view = next;
         if (themeChanged)
         {
@@ -777,18 +789,27 @@ public partial class MainWindow : Window
             Viewer.DefaultBackgroundColor = App.PageColor(next.DarkMode);
         }
 
+        if (explorerChanged)
+        {
+            ApplyExplorerVisibility();
+        }
+
+        SaveView();
+        if (_webReady && Viewer.CoreWebView2 is not null)
+        {
+            _ = Viewer.CoreWebView2.ExecuteScriptAsync($"window.smtView && window.smtView.apply({next.ToPageJson()})");
+        }
+    }
+
+    private void SaveView()
+    {
         try
         {
-            next.Save(App.ViewSettingsPath);
+            _view.Save(App.ViewSettingsPath);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // The change still applies to this session.
-        }
-
-        if (_webReady && Viewer.CoreWebView2 is not null)
-        {
-            _ = Viewer.CoreWebView2.ExecuteScriptAsync($"window.smtView && window.smtView.apply({next.ToPageJson()})");
         }
     }
 
@@ -831,6 +852,13 @@ public partial class MainWindow : Window
         if (e.Key == Key.F3 && Keyboard.Modifiers is ModifierKeys.None or ModifierKeys.Shift)
         {
             StepFind(backward: Keyboard.Modifiers == ModifierKeys.Shift);
+            e.Handled = true;
+            return;
+        }
+
+        if (Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift) && e.Key == Key.E)
+        {
+            ToggleExplorer();
             e.Handled = true;
             return;
         }
@@ -890,12 +918,19 @@ public partial class MainWindow : Window
         }
 
         var markdown = files.FirstOrDefault(MarkdownPaths.IsMarkdownFile);
-        if (markdown is null)
+        if (markdown is not null)
         {
-            StatusText.Text = "Drop a .md or .markdown file.";
+            OpenPath(markdown);
             return;
         }
 
-        OpenPath(markdown);
+        var folder = files.FirstOrDefault(Directory.Exists);
+        if (folder is not null)
+        {
+            OpenFolder(folder);
+            return;
+        }
+
+        StatusText.Text = "Drop a .md or .markdown file, or a folder.";
     }
 }
