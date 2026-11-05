@@ -1,6 +1,23 @@
 # Microsoft Store listing draft
 
-Paste these into Partner Center when the product identity is ready.
+Paste these into Partner Center for the SandMarkDown submission.
+
+## Product identity
+
+Kept in `packaging/StoreIdentity.json`, which `deploy/Build-Msix.ps1 -Store` reads.
+
+- Store ID: 9N30KVRMNNJP
+- Package family name: SandmarkTechnologiesLLC.SandMarkDown_k6qbe8szwam6r
+- Store page, once published: https://apps.microsoft.com/detail/9N30KVRMNNJP
+- Store app link: `ms-windows-store://pdp/?productid=9N30KVRMNNJP`
+
+## Upload package
+
+```powershell
+.\deploy\Build-Msix.ps1 -Store
+```
+
+Upload `artifacts\msix\SandMarkDown_<version>_x64.msix`. Raise `<Version>` in `src/SandMarkDown/SandMarkDown.csproj` before each new submission.
 
 ## Product name
 
