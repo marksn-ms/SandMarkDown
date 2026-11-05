@@ -25,6 +25,14 @@ From the repo:
 
 That publishes the current Release build to `%LOCALAPPDATA%\Sandmark Technologies\SandMarkDown\Current` and associates `.md` and `.markdown` with it for the current user. No admin rights. Run it again after you change the reader. `.\deploy\Install-SandMarkDown.cmd -Uninstall` removes that copy.
 
+## Microsoft Store package
+
+```powershell
+.\deploy\Build-Msix.ps1 -LocalCheck
+```
+
+That publishes a self-contained build and packs `artifacts\msix\SandMarkDown_<version>_x64-localcheck.msix` with placeholder identity, to validate the manifest and layout. For the Store upload, pass the three identity values from Partner Center, Product identity, with `-IdentityName`, `-Publisher`, and `-PublisherDisplayName`. The Store signs the package after certification. Listing text is drafted in `docs/store-listing.md`.
+
 ## Read a file
 
 File, Open loads a Markdown file. File, Close returns to the welcome page. File, Exit quits.
