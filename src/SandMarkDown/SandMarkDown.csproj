@@ -13,10 +13,17 @@
     <Authors>Sandmark Technologies</Authors>
     <Copyright>Copyright © 2026 Sandmark Technologies</Copyright>
     <Description>Local Markdown reader.</Description>
+    <!-- Product version. An increase merged to main publishes the GitHub Release. See docs/Distribution.md. -->
     <Version>1.0.0</Version>
+    <StartupObject>SandMarkDown.App</StartupObject>
     <!-- ThemeMode is the supported way to get a dark window chrome. The SDK still marks it experimental. -->
     <NoWarn>$(NoWarn);WPF0001</NoWarn>
   </PropertyGroup>
+
+  <ItemGroup>
+    <ApplicationDefinition Remove="App.xaml" />
+    <Page Include="App.xaml" />
+  </ItemGroup>
 
   <ItemGroup>
     <Resource Include="Assets\favicon.ico" />
@@ -31,6 +38,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31" />
+    <PackageReference Include="Velopack" Version="1.2.161" />
   </ItemGroup>
 
   <ItemGroup>

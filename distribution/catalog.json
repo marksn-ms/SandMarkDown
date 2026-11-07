@@ -1,0 +1,17 @@
+{
+  "name": "SandMarkDown",
+  "description": "A local Markdown reader.",
+  "repository": "marksn-ms/SandMarkDown",
+  "project": "src/SandMarkDown/SandMarkDown.csproj",
+  "packId": "SandMarkDown",
+  "channel": "win",
+  "runtime": "win-x64",
+  "velopackVersion": "1.2.161",
+  "supportalSlug": "sandmarkdown",
+  "installerAsset": "SandMarkDown-win-Setup.exe",
+  "portableAsset": "SandMarkDown-win-Portable.zip",
+  "checksumAsset": "SHA256SUMS.txt",
+  "feedAsset": "releases.win.json",
+  "fullPackagePattern": "SandMarkDown-{version}-full.nupkg",
+  "deltaPackagePattern": "SandMarkDown-{version}-delta.nupkg"
+}

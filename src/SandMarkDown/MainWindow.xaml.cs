@@ -269,7 +269,15 @@ public partial class MainWindow : Window
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
-        await InitializeViewerAsync();
+        var viewerReady = InitializeViewerAsync();
+        if (LaunchArguments.ShouldCheckForUpdates(App.StartupArgs))
+        {
+            // The page loads while the check runs. A missing update, an offline PC, or a copy that
+            // was not installed stays quiet. Opening a file on the command line skips the prompt.
+            _ = AppUpdate.OfferAsync(this, interactive: false, reopenPath: null);
+        }
+
+        await viewerReady;
     }
 
     private async Task InitializeViewerAsync()
@@ -818,6 +826,11 @@ public partial class MainWindow : Window
     private void OnZoomOutClick(object sender, RoutedEventArgs e) => SetZoom(ZoomMath.ZoomOut(_zoom));
 
     private void OnZoomResetClick(object sender, RoutedEventArgs e) => SetZoom(ZoomMath.Actual);
+
+    private async void OnCheckForUpdatesClick(object sender, RoutedEventArgs e)
+    {
+        await AppUpdate.OfferAsync(this, interactive: true, reopenPath: _documentPath);
+    }
 
     private void OnAboutClick(object sender, RoutedEventArgs e)
     {

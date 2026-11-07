@@ -3,6 +3,9 @@
     <Project Path="src/SandMarkDown.Core/SandMarkDown.Core.csproj" />
     <Project Path="src/SandMarkDown/SandMarkDown.csproj" />
   </Folder>
+  <Folder Name="/distribution/">
+    <Project Path="distribution/ReleasePlan/ReleasePlan.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/SandMarkDown.Core.Tests/SandMarkDown.Core.Tests.csproj" />
   </Folder>
