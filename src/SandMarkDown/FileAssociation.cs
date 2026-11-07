@@ -56,6 +56,79 @@ internal static class FileAssociation
     }
 
     /// <summary>
+    /// Registers this copy. Failures are swallowed so a Velopack install or update hook can finish.
+    /// The hook has a few seconds and must not show a window.
+    /// </summary>
+    public static void TryRegister()
+    {
+        try
+        {
+            Register();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            // Help, Set as default can still register later.
+        }
+    }
+
+    /// <summary>
+    /// Removes the per-user registration when it points at this copy.
+    /// Settings, recent files, and the error log are left in place.
+    /// </summary>
+    public static void TryUnregisterThisCopy()
+    {
+        try
+        {
+            UnregisterThisCopy();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            // Uninstall continues. A stale Open with entry can be replaced later.
+        }
+    }
+
+    /// <summary>
+    /// Removes registry entries that point at <see cref="ExecutablePath"/>.
+    /// Does not delete <see cref="App.DataFolder"/> and does not change the user's saved default app.
+    /// </summary>
+    public static void UnregisterThisCopy()
+    {
+        var mine = Path.GetFullPath(ExecutablePath);
+        var registered = RegisteredExecutable();
+        if (registered is null || !string.Equals(Path.GetFullPath(registered), mine, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        RemoveOpenWith(AssociationPlan.Extensions);
+        Registry.CurrentUser.DeleteSubKeyTree($@"Software\Classes\{AssociationPlan.ProgId}", throwOnMissingSubKey: false);
+
+        if (CommandPointsAt(mine, @"Software\Classes\Applications\SandMarkDown.exe\shell\open\command"))
+        {
+            Registry.CurrentUser.DeleteSubKeyTree(@"Software\Classes\Applications\SandMarkDown.exe", throwOnMissingSubKey: false);
+        }
+
+        if (ValuePointsAt(mine, @"Software\Microsoft\Windows\CurrentVersion\App Paths\SandMarkDown.exe"))
+        {
+            Registry.CurrentUser.DeleteSubKeyTree(
+                @"Software\Microsoft\Windows\CurrentVersion\App Paths\SandMarkDown.exe",
+                throwOnMissingSubKey: false);
+        }
+
+        using (var registeredApps = Registry.CurrentUser.OpenSubKey(@"Software\RegisteredApplications", writable: true))
+        {
+            var capabilities = registeredApps?.GetValue(AssociationPlan.RegisteredName) as string;
+            if (string.Equals(capabilities, AssociationPlan.CapabilitiesKey, StringComparison.OrdinalIgnoreCase))
+            {
+                registeredApps!.DeleteValue(AssociationPlan.RegisteredName, throwOnMissingValue: false);
+            }
+        }
+
+        Registry.CurrentUser.DeleteSubKeyTree(AssociationPlan.CapabilitiesKey, throwOnMissingSubKey: false);
+        NotifyShell();
+    }
+
+    /// <summary>
     /// Re-registers when the registered program no longer exists, for example after the folder moved.
     /// A registration pointing at another copy that still exists is left alone.
     /// </summary>
@@ -131,6 +204,29 @@ internal static class FileAssociation
 
         var name = new StringBuilder(length);
         return GetCurrentPackageFamilyName(ref length, name) == 0 ? name.ToString() : null;
+    }
+
+    private static void RemoveOpenWith(IReadOnlyList<string> extensions)
+    {
+        foreach (var extension in extensions)
+        {
+            using var openWith = Registry.CurrentUser.OpenSubKey($@"Software\Classes\{extension}\OpenWithProgids", writable: true);
+            openWith?.DeleteValue(AssociationPlan.ProgId, throwOnMissingValue: false);
+        }
+    }
+
+    private static bool CommandPointsAt(string executablePath, string subKey)
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(subKey);
+        var command = AssociationPlan.ExecutableFromCommand(key?.GetValue(string.Empty) as string);
+        return command is not null && string.Equals(Path.GetFullPath(command), executablePath, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool ValuePointsAt(string executablePath, string subKey)
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(subKey);
+        var value = key?.GetValue(string.Empty) as string;
+        return value is not null && string.Equals(Path.GetFullPath(value), executablePath, StringComparison.OrdinalIgnoreCase);
     }
 
     private static void NotifyShell() => SHChangeNotify(0x08000000, 0, IntPtr.Zero, IntPtr.Zero);

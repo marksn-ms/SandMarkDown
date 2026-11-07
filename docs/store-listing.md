@@ -17,7 +17,7 @@ Kept in `packaging/StoreIdentity.json`, which `deploy/Build-Msix.ps1 -Store` rea
 .\deploy\Build-Msix.ps1 -Store
 ```
 
-Upload `artifacts\msix\SandMarkDown_<version>_x64.msix`. Raise `<Version>` in `src/SandMarkDown/SandMarkDown.csproj` before each new submission.
+Upload `artifacts\msix\SandMarkDown_<version>_x64.msix`. Raise `<Version>` in `src/SandMarkDown/SandMarkDown.csproj` before each new submission. That same element is the GitHub release version. Merging a higher version to `main` also publishes the GitHub installer described in `docs/Distribution.md`.
 
 ## Product name
 

@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\SandMarkDown.Core\SandMarkDown.Core.csproj" />
+    <ProjectReference Include="..\..\distribution\ReleasePlan\ReleasePlan.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,0 +1,245 @@
+name: Release
+
+# A push to main publishes only when <Version> in the application project increased.
+# workflow_dispatch publishes the current version when its vX.Y.Z tag does not exist.
+# An existing tag is never replaced. The GitHub Release is created only after tests,
+# packaging, and provenance succeed.
+on:
+  push:
+    branches: [main]
+    paths:
+      - src/SandMarkDown/SandMarkDown.csproj
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  # gh does not read GITHUB_TOKEN unless it is also exposed as GH_TOKEN.
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  plan:
+    name: Decide whether to publish
+    if: github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    outputs:
+      publish: ${{ steps.plan.outputs.publish }}
+      version: ${{ steps.plan.outputs.version }}
+      tag: ${{ steps.plan.outputs.tag }}
+      previous: ${{ steps.plan.outputs.previous }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Compare the project version with the existing tag
+        id: plan
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $false
+          dotnet build distribution/ReleasePlan/ReleasePlan.csproj -c Release --verbosity quiet
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $project = "src/SandMarkDown/SandMarkDown.csproj"
+          $tool = @(
+            "run", "--project", "distribution/ReleasePlan/ReleasePlan.csproj",
+            "-c", "Release", "--no-build", "--verbosity", "quiet", "--"
+          )
+
+          $tagExists = $false
+          $version = dotnet @tool version --current $project
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $version = ($version | Out-String).Trim()
+          gh release view "v$version" | Out-Null
+          if ($LASTEXITCODE -eq 0) { $tagExists = $true }
+
+          $planArgs = @()
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $planArgs = @("manual", "--current", $project)
+          } else {
+            $previous = Join-Path $env:RUNNER_TEMP "previous.csproj"
+            git show "HEAD^:src/SandMarkDown/SandMarkDown.csproj" | Set-Content -Encoding utf8NoBOM $previous
+            if ($LASTEXITCODE -ne 0) {
+              $planArgs = @("plan", "--current", $project)
+            } else {
+              $planArgs = @("plan", "--current", $project, "--previous", $previous)
+            }
+          }
+          if ($tagExists) { $planArgs += "--tag-exists" }
+
+          $result = dotnet @tool @planArgs
+          $code = $LASTEXITCODE
+          $result | Out-String | Write-Host
+          if ($code -ne 0) { exit $code }
+
+          $map = @{}
+          foreach ($line in @($result)) {
+            if ($line -match '^([a-z_]+)=(.*)$') { $map[$Matches[1]] = $Matches[2].Trim() }
+          }
+          if ($map["action"] -ne "publish" -and $map["action"] -ne "skip") {
+            Write-Error "ReleasePlan returned '$($map['action'])'."
+            exit 1
+          }
+          "publish=$($map['action'] -eq 'publish')" | Add-Content -Encoding utf8NoBOM $env:GITHUB_OUTPUT
+          "version=$($map['version'])" | Add-Content -Encoding utf8NoBOM $env:GITHUB_OUTPUT
+          "tag=$($map['tag'])" | Add-Content -Encoding utf8NoBOM $env:GITHUB_OUTPUT
+          "previous=$($map['previous'])" | Add-Content -Encoding utf8NoBOM $env:GITHUB_OUTPUT
+
+  release:
+    name: Publish ${{ needs.plan.outputs.tag }}
+    needs: plan
+    if: needs.plan.outputs.publish == 'true'
+    runs-on: windows-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Refuse an existing release
+        shell: pwsh
+        env:
+          TAG: ${{ needs.plan.outputs.tag }}
+        run: |
+          $ErrorActionPreference = "Continue"
+          $PSNativeCommandUseErrorActionPreference = $false
+          gh release view $env:TAG | Out-Null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Error "Release $env:TAG already exists. This workflow does not overwrite tags or releases."
+            exit 1
+          }
+          exit 0
+
+      - name: Test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $false
+          dotnet test -c Release --nologo
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Download the previous full package
+        id: previous
+        shell: pwsh
+        env:
+          PREVIOUS: ${{ needs.plan.outputs.previous }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $false
+          "found=false" | Add-Content -Encoding utf8NoBOM $env:GITHUB_OUTPUT
+          if ([string]::IsNullOrWhiteSpace($env:PREVIOUS)) { exit 0 }
+          $tag = "v$($env:PREVIOUS)"
+          gh release view $tag | Out-Null
+          if ($LASTEXITCODE -ne 0) { exit 0 }
+          $catalog = Get-Content -Raw distribution/catalog.json | ConvertFrom-Json
+          $name = $catalog.fullPackagePattern.Replace("{version}", $env:PREVIOUS)
+          $base = Join-Path $env:RUNNER_TEMP "base-packages"
+          New-Item -ItemType Directory -Path $base | Out-Null
+          gh release download $tag --dir $base --pattern $name
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "found=true" | Add-Content -Encoding utf8NoBOM $env:GITHUB_OUTPUT
+
+      - name: Pack
+        shell: pwsh
+        env:
+          PREVIOUS_FOUND: ${{ steps.previous.outputs.found }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $false
+          $packArgs = @()
+          if ($env:PREVIOUS_FOUND -eq "true") {
+            $packArgs = @("-BasePackages", (Join-Path $env:RUNNER_TEMP "base-packages"))
+          }
+          & ./distribution/pack.ps1 @packArgs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Generate build provenance
+        if: github.event.repository.visibility == 'public'
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: artifacts/upload/*
+
+      - name: Record when provenance is unavailable
+        if: github.event.repository.visibility != 'public'
+        shell: pwsh
+        run: |
+          "GitHub Artifact Attestations were not generated because this repository is not public. Private repositories need GitHub Enterprise Cloud for attestations." | Add-Content -Encoding utf8NoBOM $env:GITHUB_STEP_SUMMARY
+
+      - name: Publish the GitHub Release
+        shell: pwsh
+        env:
+          TAG: ${{ needs.plan.outputs.tag }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          PREVIOUS: ${{ needs.plan.outputs.previous }}
+          VISIBILITY: ${{ github.event.repository.visibility }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $false
+          gh release view $env:TAG | Out-Null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Error "Release $env:TAG already exists. This workflow does not overwrite tags or releases."
+            exit 1
+          }
+
+          $catalog = Get-Content -Raw distribution/catalog.json | ConvertFrom-Json
+          $full = $catalog.fullPackagePattern.Replace("{version}", $env:VERSION)
+          $delta = $catalog.deltaPackagePattern.Replace("{version}", $env:VERSION)
+          $deltaLine = ""
+          if (Test-Path -LiteralPath "artifacts/upload/$delta") {
+            $deltaLine = "- Delta update: ``$delta``"
+          }
+          $compare = ""
+          if (-not [string]::IsNullOrWhiteSpace($env:PREVIOUS)) {
+            $compare = "Changes since ``v$env:PREVIOUS``: https://github.com/${{ github.repository }}/compare/v$env:PREVIOUS...$env:TAG"
+          }
+          $provenance = if ($env:VISIBILITY -eq "public") {
+            "Build provenance was recorded with GitHub Artifact Attestations. Verify a downloaded file with ``gh attestation verify <file> --repo ${{ github.repository }}``."
+          } else {
+            "Build provenance was not recorded. This repository is not public, and private attestations require GitHub Enterprise Cloud."
+          }
+          @"
+          ## SandMarkDown $env:VERSION
+
+          Windows x64 installer for SandMarkDown. The package includes the .NET runtime. It is not Authenticode signed. WebView2 Runtime is required and is already present on current Windows 11 installs.
+
+          - Installer: ``$($catalog.installerAsset)``
+          - Portable folder: ``$($catalog.portableAsset)``
+          - Full update package: ``$full``
+          $deltaLine
+          - Update feed: ``$($catalog.feedAsset)``
+          - Checksums: ``$($catalog.checksumAsset)``
+
+          Latest installer: https://github.com/${{ github.repository }}/releases/latest/download/$($catalog.installerAsset)
+
+          $compare
+
+          $provenance
+
+          Installed copies check this repository's stable GitHub Releases. The feed file is ``$($catalog.feedAsset)``. Supportal slug: ``$($catalog.supportalSlug)``.
+          "@ | Set-Content -Encoding utf8NoBOM "$env:RUNNER_TEMP/notes.md"
+
+          $files = @(Get-ChildItem "artifacts/upload" -File)
+          if ($files.Count -eq 0) { Write-Error "No files were packaged."; exit 1 }
+          gh release create $env:TAG --target "${{ github.sha }}" --title "SandMarkDown $env:VERSION" --notes-file "$env:RUNNER_TEMP/notes.md" $files.FullName
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          exit 0

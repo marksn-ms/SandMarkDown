@@ -45,6 +45,7 @@
             <MenuItem Header="_Help">
                 <MenuItem Header="Set as _Default for Markdown..." Click="OnSetDefaultClick"/>
                 <Separator/>
+                <MenuItem Header="_Check for updates" Click="OnCheckForUpdatesClick"/>
                 <MenuItem Header="_About SandMarkDown..." Click="OnAboutClick"/>
             </MenuItem>
         </Menu>

@@ -2,6 +2,7 @@
 using System.Windows;
 using System.Windows.Threading;
 using SandMarkDown.Core;
+using Velopack;
 
 namespace SandMarkDown;
 
@@ -11,12 +12,16 @@ namespace SandMarkDown;
 public partial class App : Application
 {
     /// <summary>
-    /// Per-user folder for settings and the error log.
+    /// Per-user folder for settings and the error log. This is outside the Velopack install folder,
+    /// so an upgrade or uninstall replaces the program and leaves these files in place.
     /// </summary>
-    internal static string DataFolder { get; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "Sandmark Technologies",
-        "SandMarkDown");
+    internal static string DataFolder { get; } = AppStorage.DataFolder(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData));
+
+    /// <summary>
+    /// Arguments from this launch, without the program path. Velopack hook arguments are not file paths.
+    /// </summary>
+    internal static string[] StartupArgs { get; private set; } = [];
 
     /// <summary>
     /// WebView2 profile folder shared by the reader and the About box.
@@ -76,11 +81,31 @@ public partial class App : Application
         dark ? System.Drawing.Color.FromArgb(0x10, 0x14, 0x18) : System.Drawing.Color.FromArgb(0xF6, 0xF5, 0xF2);
 
     /// <summary>
+    /// Velopack handles install, update, and uninstall hooks before WPF starts.
+    /// Downloaded updates are not applied until the user agrees.
+    /// </summary>
+    [STAThread]
+    private static void Main(string[] args)
+    {
+        VelopackApp.Build()
+            .SetAutoApplyOnStartup(false)
+            .OnAfterInstallFastCallback(_ => FileAssociation.TryRegister())
+            .OnAfterUpdateFastCallback(_ => FileAssociation.TryRegister())
+            .OnBeforeUninstallFastCallback(_ => FileAssociation.TryUnregisterThisCopy())
+            .Run();
+
+        var app = new App();
+        app.InitializeComponent();
+        app.Run();
+    }
+
+    /// <summary>
     /// Applies the Sandmark dark theme and opens a file path passed on the command line.
     /// </summary>
     /// <param name="e">Startup arguments. A Markdown path opens in the reader.</param>
     protected override void OnStartup(StartupEventArgs e)
     {
+        StartupArgs = e.Args.ToArray();
         DispatcherUnhandledException += OnDispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += OnDomainUnhandledException;
         TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
@@ -98,7 +123,7 @@ public partial class App : Application
         MainWindow = window;
         window.Show();
 
-        if (FileArgument(e.Args) is string path)
+        if (LaunchArguments.FilePath(e.Args) is string path)
         {
             window.OpenPath(path);
         }
@@ -164,23 +189,4 @@ public partial class App : Application
         }
     }
 
-    private static string? FileArgument(IReadOnlyList<string> args)
-    {
-        foreach (var arg in args)
-        {
-            if (string.IsNullOrWhiteSpace(arg))
-            {
-                continue;
-            }
-
-            if (arg is "-h" or "--help" or "/?")
-            {
-                continue;
-            }
-
-            return arg;
-        }
-
-        return null;
-    }
 }
